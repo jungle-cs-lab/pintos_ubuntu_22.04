@@ -1,0 +1,11 @@
+# test build 파일
+*/build/
+**/build/
+
+# 9기 디버그 유틸
+**/.test_status
+
+.vscode/
+
+cscope.*
+compile_commands.json
