@@ -64,6 +64,9 @@ static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
 
+static bool more_mvp_func(const struct list_elem* a,
+                             const struct list_elem* b, void* aux);
+
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
 
@@ -208,6 +211,8 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
 	thread_unblock (t);
+  if (t->priority > thread_get_priority())
+		thread_yield();
 
   return tid;
 }
@@ -234,6 +239,13 @@ thread_block (void) {
    be important: if the caller had disabled interrupts itself,
    it may expect that it can atomically unblock a thread and
    update other data. */
+bool more_mvp_func(const struct list_elem* a,
+                             const struct list_elem* b, void* aux) {
+  struct thread *thread_a = list_entry(a, struct thread, elem);
+  struct thread *thread_b = list_entry(b, struct thread, elem);
+  return thread_a->priority < thread_b->priority;
+}
+
 void
 thread_unblock (struct thread *t) {
   enum intr_level old_level;
@@ -242,8 +254,11 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
-  t->status = THREAD_READY;
+	list_insert_ordered(&ready_list,&t->elem, more_mvp_func, NULL);
+  	t->status = THREAD_READY;
+  // 왜 밑에를 넣으면 오류? 처음에 initialize 되어 running thread가 없을 시에는 priority가 존재하지 않아서 그런가? 그렇다면 thread_get_priority에서 오류가c 나지 않을까?
+  // 이 문장을 실행할 위치를 옮기든 조건을 추가하든 해야함.
+
 	intr_set_level (old_level);
 }
 
@@ -299,13 +314,13 @@ thread_exit (void) {
 void
 thread_yield (void) {
 	struct thread *curr = thread_current ();
-  enum intr_level old_level;
+  	enum intr_level old_level;
 
 	ASSERT (!intr_context ());
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+		list_insert_ordered(&ready_list, &curr->elem,more_mvp_func, NULL );
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
@@ -314,6 +329,7 @@ thread_yield (void) {
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+
 }
 
 /* Returns the current thread's priority. */
