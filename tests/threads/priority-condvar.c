@@ -37,7 +37,7 @@ test_priority_condvar (void)
     {
       lock_acquire (&lock);
       msg ("Signaling...");
-      cond_signal (&condition, &lock);
+      cond_signal (&condition, &lock)  ; 
       lock_release (&lock);
     }
 }

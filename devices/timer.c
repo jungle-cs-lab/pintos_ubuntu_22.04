@@ -29,7 +29,7 @@ static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static bool wakes_early_and_mvp_func(const struct list_elem* a,
-                            const struct list_elem* b, void* aux);
+                             const struct list_elem* b, void* aux);
 
 /* Sets up the 8254 Programmable Interval Timer (PIT) to
   interrupt PIT_FREQ times per second, and registers the
@@ -90,14 +90,13 @@ timer_elapsed (int64_t then) {
 }
 
 bool wakes_early_and_mvp_func(const struct list_elem* a, const struct list_elem* b,
-                     void* aux) {
- struct thread *thread_a = list_entry(a, struct thread, elem);
- struct thread *thread_b = list_entry(b, struct thread, elem);
- 
- if (thread_a->wakeup_tick == thread_b->wakeup_tick) 
-  return thread_a->priority < thread_b->priority;
- 
- return thread_a->wakeup_tick < thread_b->wakeup_tick;
+                      void* aux) {
+  struct thread *thread_a = list_entry(a, struct thread, elem);
+  struct thread *thread_b = list_entry(b, struct thread, elem);
+	if (thread_a->wakeup_tick == thread_b->wakeup_tick) {
+		return thread_a->priority < thread_b->priority;
+	}
+  return thread_a->wakeup_tick < thread_b->wakeup_tick;
 }
 
 /* Suspends execution for approximately TICKS timer ticks. */
@@ -105,17 +104,18 @@ void timer_sleep(int64_t ticks) {
  int64_t now = timer_ticks();
  struct thread* curr = thread_current();
   
- ASSERT (intr_get_level () == INTR_ON);
- enum intr_level old_level;
- ASSERT(!intr_context());
-
- old_level = intr_disable();
+  ASSERT (intr_get_level () == INTR_ON);
   
- if (curr != idle_thread){
-   curr->wakeup_tick = now + ticks; // wakeup_tick을 지정 안했음
-   list_insert_ordered(&sleep_list, &curr->elem, wakes_early_and_mvp_func, NULL);
- }
- thread_block();
+  enum intr_level old_level;
+  
+  ASSERT(!intr_context());
+  
+  old_level = intr_disable();
+  if (curr != idle_thread){
+    curr->wakeup_tick = now + ticks; // wakeup_tick을 지정 안했음
+    list_insert_ordered(&sleep_list, &curr->elem, wakes_early_and_mvp_func, NULL);
+  }
+  thread_block();
 
  intr_set_level(old_level);
 }
@@ -153,14 +153,16 @@ timer_interrupt (struct intr_frame *args UNUSED) {
  // wake func: sleep list -> ready list
  int64_t now = timer_ticks();
   while (!list_empty(&sleep_list)) {
-   struct list_elem* curr = list_front(&sleep_list);
-   struct thread* curr_thread = list_entry(curr, struct thread, elem);
-   if (now < curr_thread->wakeup_tick) {
-     break;
-   }
-   list_remove(curr);
-   thread_unblock(curr_thread);
- }
+    struct list_elem* curr = list_front(&sleep_list);
+    struct thread* curr_thread = list_entry(curr, struct thread, elem);
+    if (now < curr_thread->wakeup_tick) {
+      break;
+    }
+    list_remove(curr);
+    thread_unblock(curr_thread);
+		
+
+  }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer

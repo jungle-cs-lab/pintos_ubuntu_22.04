@@ -64,8 +64,10 @@ static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
 
-static bool more_mvp_func(const struct list_elem* a,
+bool more_mvp_func(const struct list_elem* a,
                             const struct list_elem* b, void* aux);
+
+int get_priority (struct thread *t);
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -118,8 +120,9 @@ thread_init (void) {
  /* Set up a thread structure for the running thread. */
    initial_thread = running_thread ();
    init_thread (initial_thread, "main", PRI_DEFAULT);
- initial_thread->status = THREAD_RUNNING;
+  initial_thread->status = THREAD_RUNNING;
    initial_thread->tid = allocate_tid ();
+  
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -210,7 +213,13 @@ thread_create (const char *name, int priority,
  t->tf.eflags = FLAG_IF;
 
  /* Add to run queue. */
-   thread_unblock (t);
+  thread_unblock (t);
+
+  // if (lock_held_by_current_thread(aux)) {
+  //   if (thread_current()->priority < priority) {
+  //     thread_current()->priority =
+  //   }
+  // }
 
   if (t->priority > thread_get_priority())
            thread_yield();
@@ -218,12 +227,17 @@ thread_create (const char *name, int priority,
  return tid;
 }
 
+
+bool is_valid (struct thread *t) {
+  return is_thread(t);
+}
+
 /* Puts the current thread to sleep.  It will not be scheduled
   again until awoken by thread_unblock().
 
   This function must be called with interrupts turned off.  It
   is usually a better idea to use one of the synchronization
-  primitives in synch.h. */
+  primitives in synch.h. */ 
 void
 thread_block (void) {
    ASSERT (!intr_context ());
@@ -240,8 +254,7 @@ thread_block (void) {
   be important: if the caller had disabled interrupts itself,
   it may expect that it can atomically unblock a thread and
   update other data. */
-bool more_mvp_func(const struct list_elem* a,
-                            const struct list_elem* b, void* aux) {
+bool more_mvp_func(const struct list_elem* a,const struct list_elem* b, void* aux) {
  struct thread *thread_a = list_entry(a, struct thread, elem);
  struct thread *thread_b = list_entry(b, struct thread, elem);
  return thread_a->priority > thread_b->priority;
@@ -336,8 +349,17 @@ thread_set_priority (int new_priority) {
 /* Returns the current thread's priority. */
 int
 thread_get_priority (void) {
-   return thread_current ()->priority;
+ return get_priority(thread_current());
 }
+
+int
+get_priority (struct thread *t) {
+ if (!list_empty(&t->donations))
+   return list_entry(list_back(&t->donations),struct thread, donation_elem)->priority;
+
+  return t->priority;
+}
+
 
 /* Sets the current thread's nice value to NICE. */
 void
@@ -428,6 +450,7 @@ init_thread (struct thread *t, const char *name, int priority) {
    t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
  t->priority = priority;
  t->magic = THREAD_MAGIC;
+ list_init(&t->donations);
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

@@ -66,13 +66,13 @@ sema_down (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	while (sema->value == 0) {
-		list_push_back (&sema->waiters, &thread_current ()->elem);
+		list_insert_ordered (&sema->waiters, &thread_current ()->elem, more_mvp_func, NULL);
 		thread_block ();
 	}
 	sema->value--;
 	intr_set_level (old_level);
 }
-
+  
 /* Down or "P" operation on a semaphore, but only if the
    semaphore is not already 0.  Returns true if the semaphore is
    decremented, false otherwise.
@@ -110,10 +110,10 @@ sema_up (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	if (!list_empty (&sema->waiters))
-		thread_unblock (list_entry (list_pop_front (&sema->waiters),
-					struct thread, elem));
+		thread_unblock (list_entry (list_pop_front (&sema->waiters), struct thread, elem));
 	sema->value++;
 	intr_set_level (old_level);
+
 }
 
 static void sema_test_helper (void *sema_);
@@ -188,8 +188,16 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
+	if ((lock->semaphore.value == 0) && is_valid(lock->holder)) {
+		struct thread *holder = lock->holder;
+		if (thread_current()->priority > get_priority(holder))
+			list_push_back(&holder->donations, &thread_current()->donation_elem);
+	}
+
 	sema_down (&lock->semaphore);
+
 	lock->holder = thread_current ();
+
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -221,10 +229,16 @@ void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
+	// 락을 풀었으면 donation 정리하면서 자기 priority 도르마무
+	while (!list_empty(&(thread_current()->donations))) {
+    list_pop_front(&(thread_current()->donations));
+	}
 
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
+	thread_yield();
 }
+
 
 /* Returns true if the current thread holds LOCK, false
    otherwise.  (Note that testing whether some other thread holds
