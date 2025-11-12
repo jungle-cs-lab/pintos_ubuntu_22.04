@@ -93,6 +93,7 @@ struct thread {
 	int priority;                       /* Priority. */
   struct list donations;              /* Donations */
   struct list_elem donation_elem;
+  struct lock *waiting_lock;
 
   /* Shared between thread.c and synch.c. */
   struct list_elem elem;              /* List element. */

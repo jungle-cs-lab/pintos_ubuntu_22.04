@@ -221,7 +221,7 @@ thread_create (const char *name, int priority,
   //   }
   // }
 
-  if (t->priority > thread_get_priority())
+  if (priority > thread_get_priority())
            thread_yield();
 
  return tid;
@@ -257,7 +257,7 @@ thread_block (void) {
 bool more_mvp_func(const struct list_elem* a,const struct list_elem* b, void* aux) {
  struct thread *thread_a = list_entry(a, struct thread, elem);
  struct thread *thread_b = list_entry(b, struct thread, elem);
- return thread_a->priority > thread_b->priority;
+ return get_priority(thread_a) > get_priority(thread_b);
 }
 
 void
@@ -451,6 +451,7 @@ init_thread (struct thread *t, const char *name, int priority) {
  t->priority = priority;
  t->magic = THREAD_MAGIC;
  list_init(&t->donations);
+ t->waiting_lock = NULL;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
