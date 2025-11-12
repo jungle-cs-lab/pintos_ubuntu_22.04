@@ -94,7 +94,7 @@ bool wakes_early_and_mvp_func(const struct list_elem* a, const struct list_elem*
   struct thread *thread_a = list_entry(a, struct thread, elem);
   struct thread *thread_b = list_entry(b, struct thread, elem);
 	if (thread_a->wakeup_tick == thread_b->wakeup_tick) {
-		return thread_a->priority < thread_b->priority;
+		return get_priority(thread_a) < get_priority(thread_b);
 	}
   return thread_a->wakeup_tick < thread_b->wakeup_tick;
 }

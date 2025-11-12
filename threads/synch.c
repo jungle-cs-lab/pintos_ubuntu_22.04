@@ -187,16 +187,19 @@ lock_acquire (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
+	
 
 	if ((lock->semaphore.value == 0) && is_valid(lock->holder)) {
 		struct thread *holder = lock->holder;
-		if (thread_current()->priority > get_priority(holder))
+		thread_current()->waiting_lock = lock;
+		if (thread_get_priority() > get_priority(holder))
 			list_push_back(&holder->donations, &thread_current()->donation_elem);
 	}
 
 	sema_down (&lock->semaphore);
 
 	lock->holder = thread_current ();
+	lock->holder->waiting_lock = NULL;
 
 }
 
@@ -230,11 +233,18 @@ lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
 	// 락을 풀었으면 donation 정리하면서 자기 priority 도르마무
-	while (!list_empty(&(thread_current()->donations))) {
-    list_pop_front(&(thread_current()->donations));
+
+	struct list_elem *cur = list_begin(&lock->holder->donations);
+	while (cur != list_tail(&lock->holder->donations)) {
+		struct list_elem *next = list_next(cur);
+		if (list_entry(cur,struct thread, donation_elem)->waiting_lock == lock) {
+			list_remove(cur);
+		}
+		cur = next;
 	}
 
 	lock->holder = NULL;
+
 	sema_up (&lock->semaphore);
 	thread_yield();
 }
