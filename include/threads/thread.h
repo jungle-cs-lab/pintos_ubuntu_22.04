@@ -91,6 +91,8 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
+  struct list donations;              /* Donations */
+  struct list_elem donation_elem;
 
   /* Shared between thread.c and synch.c. */
   struct list_elem elem;              /* List element. */
@@ -113,12 +115,17 @@ struct thread {
 
 /* Idle thread. */
 extern struct thread* idle_thread;
+extern bool is_valid(struct thread *t);
+
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
 extern struct list sleep_list;
+extern bool more_mvp_func(const struct list_elem* a,const struct list_elem* b, void* aux);
+extern int get_priority (struct thread *t);
+
 
 void thread_init (void);
 void thread_start (void);
