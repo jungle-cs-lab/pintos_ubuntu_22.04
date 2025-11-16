@@ -177,6 +177,7 @@ int process_exec(void* f_name)
 
     /* And then load the binary */
     success = load(file_name, &_if);
+    
 
     /* If load failed, quit. */
     palloc_free_page(file_name);
@@ -332,14 +333,14 @@ static bool load(const char* file_name, struct intr_frame* if_)
         goto done;
     process_activate(thread_current());
 
-    /* Open executable file. */
+    /* Open executable file and get file descriptor*/
     file = filesys_open(file_name);
     if (file == NULL) {
         printf("load: %s: open failed\n", file_name);
         goto done;
     }
 
-    /* Read and verify executable header. */
+    /* Read and verify executable header. is it an ELF file? is it 64bits? */
     if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr || memcmp(ehdr.e_ident, "\177ELF\2\1\1", 7) ||
         ehdr.e_type != 2 || ehdr.e_machine != 0x3E // amd64
         || ehdr.e_version != 1 || ehdr.e_phentsize != sizeof(struct Phdr) || ehdr.e_phnum > 1024) {
@@ -347,7 +348,7 @@ static bool load(const char* file_name, struct intr_frame* if_)
         goto done;
     }
 
-    /* Read program headers. */
+    /* Read program headers. Basically loading user progam's .text, .data, .bss into memory*/
     file_ofs = ehdr.e_phoff;
     for (i = 0; i < ehdr.e_phnum; i++) {
         struct Phdr phdr;
@@ -397,11 +398,11 @@ static bool load(const char* file_name, struct intr_frame* if_)
         }
     }
 
-    /* Set up stack. */
+    /* Set up stack - size == single page*/
     if (!setup_stack(if_))
         goto done;
 
-    /* Start address. */
+    /* Point to start address of program in ELF header with CPU instruction pointer */
     if_->rip = ehdr.e_entry;
 
     /* TODO: Your code goes here.
