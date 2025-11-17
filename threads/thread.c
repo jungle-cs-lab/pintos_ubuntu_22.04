@@ -245,7 +245,7 @@ bool more_mvp_func(const struct list_elem* a, const struct list_elem* b, void* a
     struct thread* thread_a = list_entry(a, struct thread, elem);
     struct thread* thread_b = list_entry(b, struct thread, elem);
     return thread_a->priority > thread_b->priority;
-
+}
 
 void thread_unblock(struct thread* t)
 {
@@ -370,7 +370,6 @@ void thread_set_priority(int new_priority)
         thread_yield();
     intr_set_level(old_level);
 }
-
 
 /* Sets the current thread's nice value to NICE. */
 void thread_set_nice(int nice UNUSED)
