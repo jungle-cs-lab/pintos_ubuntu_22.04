@@ -157,62 +157,52 @@ error:
     thread_exit();
 }
 
-void arg_passing(void* f_line, struct intr_frame *_if) 
+void arg_passing(void* f_line, struct intr_frame* _if)
 {
-    //f_line is basically a line of arguments seperated by spaces
-    // just set 12 as default for now
-    char * argv[12];
-    int argc = 0; // will increase the arg count as i split
-    char *arg_copy; // a seperate copy of filename for using strtok
-    // always good practice to make a copy to use strtok
-    arg_copy = palloc_get_page(0);
-    if (arg_copy == NULL)
-        return TID_ERROR; // is it necessary to return TID error here as well?
-    strlcpy(arg_copy, f_line, PGSIZE);
+    char* f_copy = palloc_get_page(0);
+    if (f_copy == NULL)
+        return;
 
-    // start parsing now that copy complete
-    
-    char *save_ptr;
-    char *token;
-    char *arg_address[12];
-    uintptr_t *esp = _if->rsp; // stack entry point
+    strlcpy(f_copy, f_line, PGSIZE);
 
-    // must initialize strtok and fill up rest
-    token = strtok_r(arg_copy, ' ', &save_ptr);
-    esp-= strlen(token);
-    arg_address[0] = esp;
-    argc = 1;
-    // pushing in strings into stack
+    void* arg_addr[64];
+    char* token;
+    char* saveptr;
+    int argc = 0;
+    char* rsp = (char*)_if->rsp;
 
-    while (token = strtok_r(NULL, ' ', &save_ptr) != NULL) 
-    {
-        argv[argc] = token;
-        arg_address[argc] = esp; // not sure if this is the right way to 'push' the strings?
-        esp -= strlen(token)+1;
-        argc++;
+    for (token = strtok_r(f_copy, " ", &saveptr); token != NULL; token = strtok_r(NULL, " ", &saveptr)) {
+        int len = strlen(token) + 1;
+        rsp -= len;
+        memcpy(rsp, token, len);
+        arg_addr[argc++] = rsp;
     }
-    // must add padding to align stack with word size before pushing in addresses of these argvs
 
-    while ((uintptr_t)esp%8 != 0) // im not sure if im ddoing this right
-        esp--; 
-
-    // parsing arguments into argv
-    int args = argc; // i can't directly change argc since i need to use it later to insert in to rdi
-    for (;args > 0; args--) { // until i got no arg count left
-        esp = arg_address[args]; 
-        esp -= strlen(arg_address[args]) + 1; // also include null pointer
-        // i think this is all i need to do?
+    // word-align
+    while ((uintptr_t)rsp % 8 != 0) {
+        rsp--;
+        *rsp = 0;
     }
-    // add in fake return address? of type void? 
-    esp = (uint64_t)0; // 
 
+    // argv[argc] = NULL (Sentinel)
+    rsp -= 8;
+    *(char**)rsp = 0;
 
-    // i guess once i'm done filling in the stack, i should point the rsp towards argv[0]
-    // and also update argc on rdi
-    _if->rsp = esp;
-    _if->R.rsi = esp +8; // i guess argv comes right after the return address so..
+    // [핵심 수정] i >= 0 으로 변경하여 argv[0]까지 모두 스택에 넣어야 합니다.
+    for (int i = argc - 1; i >= 0; i--) {
+        rsp -= 8;
+        *(char**)rsp = arg_addr[i];
+    }
+
+    // fake return address
+    rsp -= 8;
+    *(char**)rsp = 0;
+
+    _if->rsp = (uintptr_t)rsp;
     _if->R.rdi = argc;
+    _if->R.rsi = (uintptr_t)rsp + 8; // rsp는 fake ret을 가리키므로 +8 하면 argv[0]의 주소(argv 배열 시작)가 됨.
 
+    palloc_free_page(f_copy);
 }
 
 /* Switch the current execution context to the f_name.
@@ -222,28 +212,39 @@ int process_exec(void* f_name)
     char* file_name = f_name;
     bool success;
 
-    /* We cannot use the intr_frame in the thread structure.
-     * This is because when current thread rescheduled,
-     * it stores the execution information to the member. */
     struct intr_frame _if;
     _if.ds = _if.es = _if.ss = SEL_UDSEG;
     _if.cs = SEL_UCSEG;
     _if.eflags = FLAG_IF | FLAG_MBS;
 
-    /* We first kill the current context */
     process_cleanup();
 
-    /* And then load the binary */
-    success = load(file_name, &_if);
-
-    /* If load failed, quit. */
-    palloc_free_page(file_name);
-    if (!success)
+    /* 1. load에는 파일명만 넘겨줘야 하므로, 문자열을 복사해서 첫 토큰만 분리합니다. */
+    char* fn_copy = palloc_get_page(0);
+    if (fn_copy == NULL)
         return -1;
-    
-    arg_passing(f_name, &_if);
+    strlcpy(fn_copy, file_name, PGSIZE);
 
-    /* Start switched process. */
+    char* save_ptr;
+    char* real_file_name = strtok_r(fn_copy, " ", &save_ptr);
+
+    /* 2. 파싱된 파일명으로 load 수행 */
+    success = load(real_file_name, &_if);
+
+    /* 복사본은 이제 필요 없으므로 해제 */
+    palloc_free_page(fn_copy);
+
+    if (!success) {
+        palloc_free_page(file_name); // 실패 시 여기서 원본 해제
+        return -1;
+    }
+
+    /* 3. [핵심 수정] 원본(file_name)은 arg_passing에 써야 하므로 아직 해제하면 안 됩니다! */
+    arg_passing(file_name, &_if);
+
+    /* arg_passing이 끝났으니 이제 안전하게 원본 해제 */
+    palloc_free_page(file_name);
+
     do_iret(&_if);
     NOT_REACHED();
 }
