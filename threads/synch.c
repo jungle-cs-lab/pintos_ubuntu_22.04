@@ -119,12 +119,21 @@ void sema_up(struct semaphore* sema)
         }
 
         // 2. 찾은 스레드를 리스트에서 제거하고 unblock 합니다.
+        struct thread* t = list_entry(max_elem, struct thread, elem);
         list_remove(max_elem);
-        thread_unblock(list_entry(max_elem, struct thread, elem));
-    }
-    sema->value++;
+        thread_unblock(t);
+
+        sema->value++;
+
+        // 3. [핵심 수정] Preemption(선점) 구현
+        // 방금 깨운 스레드(t)가 현재 스레드보다 우선순위가 높다면 CPU 양보
+        // intr_context() 체크는 인터럽트 핸들러 내부가 아닐 때만 yield 하기 위함 (안전장치)
+        if (!intr_context() && t->priority > thread_current()->priority) {
+            thread_yield();
+        }
+    } else sema->value++;
     intr_set_level(old_level);
-    thread_yield();
+    
 }
 
 static void sema_test_helper(void* sema_);
