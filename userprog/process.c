@@ -42,6 +42,7 @@ tid_t process_create_initd(const char* file_name)
 {
     char* fn_copy;
     tid_t tid;
+    char *file_name_only, *save_ptr;
 
     /* Make a copy of FILE_NAME.
      * Otherwise there's a race between the caller and load(). */
@@ -50,10 +51,12 @@ tid_t process_create_initd(const char* file_name)
         return TID_ERROR;
     strlcpy(fn_copy, file_name, PGSIZE);
 
+    file_name_only = strtok_r(file_name, " ", &save_ptr);
+
     /* Create a new thread to execute FILE_NAME. */
-    tid = thread_create(file_name, PRI_DEFAULT, initd, fn_copy);
+    tid = thread_create(file_name_only, PRI_DEFAULT, initd, fn_copy);
     if (tid == TID_ERROR)
-        palloc_free_page(fn_copy);
+        palloc_free_page(file_name_only);
     return tid;
 }
 
@@ -162,7 +165,10 @@ error:
 int process_exec(void* f_name)
 {
     char* file_name = f_name;
+    char *file_name_only, *save_ptr;
     bool success;
+
+    file_name_only = strtok_r(f_name, " ", &save_ptr);
 
     /* We cannot use the intr_frame in the thread structure.
      * This is because when current thread rescheduled,
@@ -178,8 +184,10 @@ int process_exec(void* f_name)
     /* And then load the binary */
     success = load(file_name, &_if);
 
+    // hex_dump(_if.rsp, _if.rsp, USER_STACK - (uint64_t)_if.rsp, true);
+
     /* If load failed, quit. */
-    palloc_free_page(file_name);
+    palloc_free_page(file_name_only);
     if (!success)
         return -1;
 
@@ -202,6 +210,24 @@ int process_wait(tid_t child_tid UNUSED)
     /* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
      * XXX:       to add infinite loop here before
      * XXX:       implementing the process_wait. */
+
+    timer_sleep(100);
+
+    // FIXME: 구현
+    struct thread* child_thread = (struct thread*)child_tid;
+    // while (child_thread->status != THREAD_DYING) { // THRED_DYING 상태 체크
+    // while (1) {
+    //     // if 커널에 의한 종료 || TID가 유효하지 않음(TID_ERROR) || 호출한 프로세스의 자식이 아님 || 이미
+    //     // process_wait()가 성공적으로 호출된 적이 있다면
+    //     // TODO: 커널에 의한 종료: 이게 exit 호출로 보임 || 호출한 프로세스의 자식이 아님 || 이미
+    //     process_wait()가
+    //     // 성공적으로 호출된 적이 있다
+    //     if (child_tid == TID_ERROR) {
+    //         return -1;
+    //     }
+    //     // 그렇지 않으면 대기. sleep_list로 보내야 하나? sleep list에서는 어떻게 작동하지?
+    // }
+
     return -1;
 }
 
@@ -213,6 +239,10 @@ void process_exit(void)
      * TODO: Implement process termination message (see
      * TODO: project2/process_termination.html).
      * TODO: We recommend you to implement process resource cleanup here. */
+
+    // TODO: 커널 스레드 또는 halt 시스템 콜이 호출 될 때는 제외
+    // FIXME: exit에 들어갈 수는 뭐지?
+    printf("%s: exit(%d)\n", curr->name, curr->status);
 
     process_cleanup();
 }
@@ -325,6 +355,9 @@ static bool load(const char* file_name, struct intr_frame* if_)
     off_t file_ofs;
     bool success = false;
     int i;
+    char *token, *save_ptr, *file_name_only;
+
+    file_name_only = strtok_r(file_name, " ", &save_ptr);
 
     /* Allocate and activate page directory. */
     t->pml4 = pml4_create();
@@ -333,21 +366,19 @@ static bool load(const char* file_name, struct intr_frame* if_)
     process_activate(thread_current());
 
     /* Open executable file. */
-    file = filesys_open(file_name);
+    file = filesys_open(file_name_only);
     if (file == NULL) {
-        printf("load: %s: open failed\n", file_name);
+        printf("load: %s: open failed\n", file_name_only);
         goto done;
     }
-
 
     /* Read and verify executable header. */
     if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr || memcmp(ehdr.e_ident, "\177ELF\2\1\1", 7) ||
         ehdr.e_type != 2 || ehdr.e_machine != 0x3E // amd64
         || ehdr.e_version != 1 || ehdr.e_phentsize != sizeof(struct Phdr) || ehdr.e_phnum > 1024) {
-        printf("load: %s: error loading executable\n", file_name);
+        printf("load: %s: error loading executable\n", file_name_only);
         goto done;
     }
-
 
     /* Read program headers. */
     file_ofs = ehdr.e_phoff;
@@ -406,8 +437,38 @@ static bool load(const char* file_name, struct intr_frame* if_)
     /* Start address. */
     if_->rip = ehdr.e_entry;
 
-    /* TODO: Your code goes here.
-     * TODO: Implement argument passing (see project2/argument_passing.html). */
+    int index = 0;
+    char* ptr = USER_STACK;
+    char* address[24] = {0};
+
+    // 인자 값 메모리에 넣기
+    for (token = strtok_r(file_name, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr)) {
+        ptr -= (strlen(token) + 1);
+        strlcat(token, "\0", 1);
+        address[index++] = memcpy(ptr, token, strlen(token));
+    }
+
+    // 8의 배수 패딩
+    while ((uint64_t)ptr % 8 != 0) {
+        ptr--;
+    }
+
+    // 주소 값 메모리에 넣기
+    int addr_idx = 0;
+    ptr -= 8;
+    memset(ptr, 0, 8); // 마지막 원소 NULL 처리
+    while (address[addr_idx] != NULL) {
+        ptr -= 8;
+        memcpy(ptr, &address[addr_idx++], 8);
+    }
+
+    // return address 넣기
+    ptr -= 8;
+    memset(ptr, 0, 8);
+
+    if_->rsp = (uint64_t)ptr;
+    if_->R.rdi = index;             // argc
+    if_->R.rsi = (uint64_t)ptr + 8; // argv 배열의 첫번째 주소
 
     success = true;
 

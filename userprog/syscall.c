@@ -38,7 +38,28 @@ void syscall_init(void)
 /* The main system call interface */
 void syscall_handler(struct intr_frame* f UNUSED)
 {
-    // TODO: Your implementation goes here.
-    printf("system call!\n");
+    register uint64_t rax = f->R.rax;
+    register uint64_t arg1 = f->R.rdi;
+    register uint64_t arg2 = f->R.rsi;
+    register uint64_t arg3 = f->R.rdx;
+    register uint64_t arg4 = f->R.r10;
+    register uint64_t arg5 = f->R.r8;
+    register uint64_t arg6 = f->R.r9;
+
+    switch (rax) {
+    case SYS_WRITE:
+        // FIXME: write file은 skip된 상태
+        if (arg1 == 1) {
+            // FIXME: 만약 arg2(buffer)가 너무 커지면, buffer를 나눠서 putbuf를 호출해야 함
+            putbuf(arg2, arg3);
+            // TODO: 실제로 출력한 크기를 어떻게 호출하지?
+            return sizeof arg2;
+        }
+        break;
+
+    default:
+        break;
+    }
+
     thread_exit();
 }
