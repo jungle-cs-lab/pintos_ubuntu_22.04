@@ -214,33 +214,17 @@ int process_wait(tid_t child_tid UNUSED)
 
     timer_sleep(100);
 
-    // FIXME: 구현
-    struct thread* child_thread = (struct thread*)child_tid;
-    // while (child_thread->status != THREAD_DYING) { // THRED_DYING 상태 체크
-    // while (1) {
-    //     // if 커널에 의한 종료 || TID가 유효하지 않음(TID_ERROR) || 호출한 프로세스의 자식이 아님 || 이미
-    //     // process_wait()가 성공적으로 호출된 적이 있다면
-    //     // TODO: 커널에 의한 종료: 이게 exit 호출로 보임 || 호출한 프로세스의 자식이 아님 || 이미
-    //     process_wait()가
-    //     // 성공적으로 호출된 적이 있다
-    //     if (child_tid == TID_ERROR) {
-    //         return -1;
-    //     }
-    //     // 그렇지 않으면 대기. sleep_list로 보내야 하나? sleep list에서는 어떻게 작동하지?
-    // }
-
     return -1;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
 void process_exit(void)
 {
+    struct thread* curr = thread_current();
     /* TODO: Your code goes here.
      * TODO: Implement process termination message (see
      * TODO: project2/process_termination.html).
      * TODO: We recommend you to implement process resource cleanup here. */
-
-    struct thread* curr = thread_current();
 
     if (curr->pml4 != NULL) // 커널 스레드는 출력 x
         printf("%s: exit(%d)\n", thread_current()->name, curr->tf.R.rax);
