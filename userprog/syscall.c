@@ -18,6 +18,7 @@ static struct lock lock;
 static void check_valid_ptr(void* ptr);
 static void exit(int status);
 static int write(int fd, const void* buffer, unsigned size);
+static bool create(const char* file, unsigned initial_size);
 
 /* System call.
  *
@@ -64,6 +65,9 @@ void syscall_handler(struct intr_frame* f UNUSED)
     case SYS_WRITE:
         f->R.rax = write(arg1, arg2, arg3);
         break;
+    case SYS_CREATE:
+        f->R.rax = create(arg1, arg2);
+        break;
     default:
         thread_exit();
     }
@@ -78,6 +82,8 @@ static void exit(int status)
 
 int write(int fd, const void* buffer, unsigned size)
 {
+    check_valid_ptr(buffer);
+    
     lock_acquire(&lock); // race condition 방지
     char* buf = (char*)buffer;
 
@@ -104,4 +110,12 @@ void check_valid_ptr(void* ptr)
         exit(-1);
     if (pml4_get_page(thread_current()->pml4, ptr) == NULL) // must be mapped
         exit(-1);
+}
+
+bool create(const char* file, unsigned initial_size)
+{
+    check_valid_ptr(file);
+
+    bool success = filesys_create(file, initial_size);
+    return success;
 }
