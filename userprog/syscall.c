@@ -15,6 +15,7 @@ void syscall_handler(struct intr_frame*);
 #define MAX_CHUNK 256 /* 콘솔 출력 청크 사이즈 */
 
 static struct lock lock;
+static void check_valid_ptr(void* ptr);
 static void exit(int status);
 static int write(int fd, const void* buffer, unsigned size);
 
@@ -35,7 +36,7 @@ void syscall_init(void)
 {
     write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48 | ((uint64_t)SEL_KCSEG) << 32);
     write_msr(MSR_LSTAR, (uint64_t)syscall_entry);
-    
+
     /* The interrupt service rountine should not serve any interrupts
      * until the syscall_entry swaps the userland stack to the kernel
      * mode stack. Therefore, we masked the FLAG_FL. */
@@ -54,7 +55,6 @@ void syscall_handler(struct intr_frame* f UNUSED)
     uint64_t arg4 = f->R.r10;
     uint64_t arg5 = f->R.r8;
     uint64_t arg6 = f->R.r9;
-
 
     switch (syscall_num) {
 
@@ -94,4 +94,14 @@ int write(int fd, const void* buffer, unsigned size)
     lock_release(&lock);
 
     return size;
+}
+
+void check_valid_ptr(void* ptr)
+{
+    if (!ptr) // must be valid ptr
+        exit(-1);
+    if (!is_user_vaddr(ptr)) // must be in user space
+        exit(-1);
+    if (pml4_get_page(thread_current()->pml4, ptr) == NULL) // must be mapped
+        exit(-1);
 }
