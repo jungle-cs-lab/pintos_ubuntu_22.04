@@ -96,7 +96,7 @@ struct thread {
     struct list donations;          /* Donations */
     struct list_elem donation_elem; /* elem to put into donation list if donation recieved or given*/
     struct lock* waiting_lock;      /* Address of Lock the thread is waiting for*/
-
+    int exit_status;                /* to keep track of exit status of process*/
     /* Shared between thread.c and synch.c. */
     struct list_elem elem; /* List element. */
 

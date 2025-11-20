@@ -18,6 +18,8 @@
 #include "threads/mmu.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+#include "include/devices/timer.h"
+
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -50,8 +52,18 @@ tid_t process_create_initd(const char* file_name)
         return TID_ERROR;
     strlcpy(fn_copy, file_name, PGSIZE);
 
+    /* thread_name parsing logic necessary due to thread name size limit declared in thread.h */
+    /* this logic was chosen instead of strtok which damages original string */
+    char thread_name[16];               // thread_name length is max 15 bytes.
+    size_t len = strcspn(fn_copy, " "); // returns length of initial segment up til rejected character
+    if (len >= sizeof(thread_name))     // logic to prevent buffer over flow
+        len = sizeof(thread_name) - 1;
+
+    memcpy(thread_name, fn_copy, len); // copy name
+    thread_name[len] = '\0';           // implement null termination
+
     /* Create a new thread to execute FILE_NAME. */
-    tid = thread_create(file_name, PRI_DEFAULT, initd, fn_copy);
+    tid = thread_create(thread_name, PRI_DEFAULT, initd, fn_copy);
     if (tid == TID_ERROR)
         palloc_free_page(fn_copy);
     return tid;
@@ -157,6 +169,50 @@ error:
     thread_exit();
 }
 
+void arg_passing(void* f_line, struct intr_frame* _if)
+{
+    char* rsp = (char*)_if->rsp; // explicit cast necessary because rsp is uintptr_t
+
+    char* save_ptr; // used for strtok_r
+    char* token;
+    char* argv_addr[64]; // 128 is max arg length ==> 64 max args considering space in between each arg composed of
+                         // single characters
+    int argc = 0;        // counting number of args
+
+    // parse and push arguments into stack at the same time
+    // simultaneously add argv_address within stack
+    for (token = strtok_r(f_line, " ", &save_ptr); token != NULL; token = strtok_r(NULL, " ", &save_ptr)) {
+        if (*token == '\0')
+            continue;
+        int len = strlen(token) + 1;
+        rsp -= len;
+        memcpy(rsp, token, len);
+        argv_addr[argc++] = rsp;
+    }
+
+    // inserting padding if needed after finishing pushing in strings
+    // no need to add 0 since when page_get_alloc, stack is zero-filled.
+    while ((uintptr_t)rsp % 8 != 0)
+        rsp--;
+
+    // insert sentinel argv[argc] = NULL;
+    rsp -= 8;
+
+    // add in argv_address into rsp
+    for (int i = argc - 1; i >= 0; i--) {
+        rsp -= 8;                    // since addresses are 8 bytes
+        *(char**)rsp = argv_addr[i]; // argv_addr[i] is pointer to pointer of string rsp should be a pointer to that.
+    }
+
+    // insert fake address
+    rsp -= 8;
+
+    // set register values
+    _if->R.rdi = argc;               // argc
+    _if->R.rsi = (uintptr_t)rsp + 8; // addr to argv[0]
+    _if->rsp = (uintptr_t)rsp;       // update top of stack
+}
+
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
 int process_exec(void* f_name)
@@ -175,13 +231,25 @@ int process_exec(void* f_name)
     /* We first kill the current context */
     process_cleanup();
 
-    /* And then load the binary */
-    success = load(file_name, &_if);
+    /* file name parsing logic necessary before passing on to load*/
+    /* same logic from parsing thread_name in process_create_initd */
+    char load_name[15];                   // load_name is max 14 bytes, +1 for null terminator
+    size_t len = strcspn(file_name, " "); // returns length of initial segment up til rejected character
+    if (len >= sizeof(load_name))         // logic to prevent buffer over flow
+        len = sizeof(load_name) - 1;
 
+    memcpy(load_name, file_name, len); // copy name
+    load_name[len] = '\0';             // implement null termination
+    /* And then load the binary */
+    success = load(load_name, &_if);
     /* If load failed, quit. */
-    palloc_free_page(file_name);
     if (!success)
         return -1;
+
+    arg_passing(file_name, &_if);
+
+    // move palloc_free_page after arg_passing()
+    palloc_free_page(file_name);
 
     /* Start switched process. */
     do_iret(&_if);
@@ -202,6 +270,7 @@ int process_wait(tid_t child_tid UNUSED)
     /* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
      * XXX:       to add infinite loop here before
      * XXX:       implementing the process_wait. */
+    timer_sleep(100);
     return -1;
 }
 
@@ -209,10 +278,12 @@ int process_wait(tid_t child_tid UNUSED)
 void process_exit(void)
 {
     struct thread* curr = thread_current();
-    /* TODO: Your code goes here.
-     * TODO: Implement process termination message (see
-     * TODO: project2/process_termination.html).
-     * TODO: We recommend you to implement process resource cleanup here. */
+
+// using preprocessor directives (전처리기 지시문) ==> 코드를 조건부로 컴파일.
+#ifdef USERPROG             // only if user program
+    if (curr->pml4 != NULL) // means thread running user code (kernel thread does not have user memory space pml4)
+        printf("%s: exit(%d)\n", curr->name, curr->exit_status);
+#endif
 
     process_cleanup();
 }
@@ -339,7 +410,6 @@ static bool load(const char* file_name, struct intr_frame* if_)
         goto done;
     }
 
-
     /* Read and verify executable header. */
     if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr || memcmp(ehdr.e_ident, "\177ELF\2\1\1", 7) ||
         ehdr.e_type != 2 || ehdr.e_machine != 0x3E // amd64
@@ -347,7 +417,6 @@ static bool load(const char* file_name, struct intr_frame* if_)
         printf("load: %s: error loading executable\n", file_name);
         goto done;
     }
-
 
     /* Read program headers. */
     file_ofs = ehdr.e_phoff;
