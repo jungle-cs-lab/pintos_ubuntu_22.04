@@ -235,15 +235,15 @@ int process_wait(tid_t child_tid UNUSED)
 /* Exit the process. This function is called by thread_exit (). */
 void process_exit(void)
 {
-    struct thread* curr = thread_current();
     /* TODO: Your code goes here.
      * TODO: Implement process termination message (see
      * TODO: project2/process_termination.html).
      * TODO: We recommend you to implement process resource cleanup here. */
 
-    // TODO: 커널 스레드 또는 halt 시스템 콜이 호출 될 때는 제외
-    // FIXME: exit에 들어갈 수는 뭐지?
-    printf("%s: exit(%d)\n", curr->name, curr->status);
+    struct thread* curr = thread_current();
+
+    if (curr->pml4 != NULL) // 커널 스레드는 출력 x
+        printf("%s: exit(%d)\n", thread_current()->name, curr->tf.R.rax);
 
     process_cleanup();
 }

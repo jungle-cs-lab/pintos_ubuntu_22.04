@@ -51,9 +51,19 @@ void syscall_handler(struct intr_frame* f UNUSED)
     register uint64_t arg5 = f->R.r8;
     register uint64_t arg6 = f->R.r9;
 
+    struct thread* curr = thread_current();
+
     lock_init(&lock);
 
     switch (rax) {
+    case SYS_HALT:
+        power_off();
+        break;
+
+    case SYS_EXIT:
+        curr->tf.R.rax = arg1;
+        break;
+
     case SYS_WRITE:
         if (arg1 == 1) {
             lock_acquire(&lock); // race condition 방지
