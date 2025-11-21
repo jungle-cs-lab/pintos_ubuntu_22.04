@@ -83,7 +83,7 @@ static void exit(int status)
 int write(int fd, const void* buffer, unsigned size)
 {
     check_valid_ptr(buffer);
-    
+
     lock_acquire(&lock); // race condition 방지
     char* buf = (char*)buffer;
 
@@ -115,7 +115,8 @@ void check_valid_ptr(void* ptr)
 bool create(const char* file, unsigned initial_size)
 {
     check_valid_ptr(file);
-
+    lock_acquire(&lock);
     bool success = filesys_create(file, initial_size);
+    lock_release(&lock);
     return success;
 }
