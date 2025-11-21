@@ -1,6 +1,6 @@
 ---
 name: "🐞 Bug Report"
-description: "버그 신고 템플릿"
+about: "버그 신고 템플릿"
 title: "[bug] "
 labels: ["bug"]
 assignees: []

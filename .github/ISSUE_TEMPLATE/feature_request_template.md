@@ -1,6 +1,6 @@
 ---
 name: "✨ Feature Request"
-description: "미구현 기능 요청 템플릿"
+about: "미구현 기능 요청 템플릿"
 title: "[feature] "
 labels: ["feature"]
 assignees: []
