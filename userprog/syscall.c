@@ -20,6 +20,11 @@ static void exit(int status);
 static int create(char* file_name, int initial_size);
 static int write(int fd, const void* buffer, unsigned size);
 static void check_valid_ptr(int count, ...);
+static int open(const char* file);
+static void close(int fd);
+static int read(int fd, void* buffer, unsigned size);
+static int32_t filesize(int fd);
+static struct file_descriptor* find_fd(int fd);
 
 /* System call.
  *
@@ -71,7 +76,18 @@ void syscall_handler(struct intr_frame* f UNUSED)
     case SYS_WRITE:
         f->R.rax = write(arg1, arg2, arg3);
         break;
-
+    case SYS_OPEN:
+        f->R.rax = open(arg1);
+        break;
+    case SYS_CLOSE:
+        close(arg1);
+        break;
+    case SYS_FILESIZE:
+        f->R.rax = filesize(arg1);
+        break;
+    case SYS_READ:
+        f->R.rax = read(arg1, arg2, arg3);
+        break;
     default:
         thread_exit();
     }
@@ -156,4 +172,118 @@ static void check_valid_ptr(int count, ...)
     }
 
     va_end(ptr_ap);
+}
+
+
+static int open(const char* file)
+{
+    check_valid_ptr(1,file);
+    lock_acquire(&lock); // lock before opening file
+
+    struct file* open_file = filesys_open(file);
+
+    if (open_file == NULL) // failure of opening file
+    {
+        lock_release(&lock);
+        return -1;
+    }
+
+    struct thread* t = thread_current();
+    struct file_descriptor* fd = malloc(sizeof(struct file_descriptor));
+
+    fd->fd_file = file;
+    fd->fd_val = t->min_fd;
+    t->min_fd++;
+
+    list_push_back(&t->files_opened, &fd->fd_elem);
+    lock_release(&lock); // release lock after fd is pushed in
+
+    return fd->fd_val; // return fd_val
+}
+
+static void close(int fd)
+{
+    struct file_descriptor* real_fd = find_fd(fd);
+    struct thread* t = thread_current();
+
+    lock_acquire(&lock); // acquire lock before handling file
+
+    if (real_fd == NULL) {
+        lock_release(&lock);
+        return;
+    }
+
+    if (real_fd->fd_val <
+        t->min_fd) //  update min_fd of thread so that it can give lowest available fd for next file opened
+        t->min_fd = real_fd->fd_val;
+
+    file_close(real_fd->fd_file);
+    list_remove(&real_fd->fd_elem); // don't forget to remove from list
+    free(real_fd);                  // also to free the file descriptor memory allocated by malloc when opened
+    lock_release(&lock);            // also to release lock
+    return;
+}
+
+static int read(int fd, void* buffer, unsigned size)
+{
+
+    check_valid_ptr(1,buffer);
+
+    lock_acquire(&lock); // acquire lock before handling file // but since read can be accessed by multiple processes,
+                         // maybe different lock?
+
+    if (fd == 0) { // read from keyboard(STDOUT)
+        lock_release(&lock);
+        return input_getc();
+    }
+
+    struct file_descriptor* real_fd = find_fd(fd);
+
+    if (real_fd == NULL) {
+        lock_release(&lock);
+        return;
+    }
+
+    struct file* file = real_fd->fd_file;
+
+    int32_t bytes_read =  file_read(file, buffer, size);
+
+    lock_release(&lock); // also to release lock
+    return bytes_read;
+}
+
+static int32_t filesize(int fd)
+{
+    struct file_descriptor* real_fd = find_fd(fd);
+
+    lock_acquire(&lock); // acquire lock before handling file
+
+    if (real_fd == NULL) {
+        lock_release(&lock);
+        return;
+    }
+
+    return file_length(real_fd->fd_file);
+
+    lock_release(&lock);
+}
+
+// helper function: returns file_descriptor if fd is given.
+static struct file_descriptor* find_fd(int fd)
+{
+    struct thread* t = thread_current();
+
+    if (list_empty(&t->files_opened)) { // if process has no files opened, failed to find file descriptor
+        return NULL;
+    }
+
+    struct list_elem* e = NULL;
+    // traverse through files_opened of current thread to find matching fd_val
+    for (e = list_begin(&t->files_opened); e != list_end(&t->files_opened); e = list_next(e)) {
+        struct file_descriptor* fd = list_entry(e, struct file_descriptor, fd_elem);
+
+        if (fd->fd_val == fd)
+            return fd; // return pointer of file_descriptor found
+    }
+    return NULL; // failed to find file descriptor
 }

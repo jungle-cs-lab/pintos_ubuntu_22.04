@@ -99,6 +99,8 @@ struct thread {
     int exit_status;                /* to keep track of exit status of process*/
     /* Shared between thread.c and synch.c. */
     struct list_elem elem; /* List element. */
+    struct list files_opened;
+    int min_fd;
 
     int64_t wakeup_tick;
 
@@ -114,6 +116,12 @@ struct thread {
     /* Owned by thread.c. */
     struct intr_frame tf; /* Information for switching */
     unsigned magic;       /* Detects stack overflow. */
+};
+
+struct file_descriptor {
+    int fd_val;
+    struct list_elem fd_elem;
+    struct file *fd_file;
 };
 
 /* Idle thread. */
