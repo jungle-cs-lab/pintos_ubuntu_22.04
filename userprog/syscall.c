@@ -35,10 +35,12 @@ void syscall_init(void)
 {
     write_msr(MSR_STAR, ((uint64_t)SEL_UCSEG - 0x10) << 48 | ((uint64_t)SEL_KCSEG) << 32);
     write_msr(MSR_LSTAR, (uint64_t)syscall_entry);
+    
     /* The interrupt service rountine should not serve any interrupts
      * until the syscall_entry swaps the userland stack to the kernel
      * mode stack. Therefore, we masked the FLAG_FL. */
     write_msr(MSR_SYSCALL_MASK, FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
+    lock_init(&lock);
 }
 
 /* The main system call interface */
@@ -53,7 +55,6 @@ void syscall_handler(struct intr_frame* f UNUSED)
     uint64_t arg5 = f->R.r8;
     uint64_t arg6 = f->R.r9;
 
-    lock_init(&lock);
 
     switch (syscall_num) {
 
