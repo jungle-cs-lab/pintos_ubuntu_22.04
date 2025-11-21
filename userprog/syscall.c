@@ -17,6 +17,7 @@ void syscall_handler(struct intr_frame*);
 static struct lock lock;
 static void exit(int status);
 static int write(int fd, const void* buffer, unsigned size);
+static bool is_valid_ptr(int count, ...);
 
 /* System call.
  *
@@ -62,7 +63,10 @@ void syscall_handler(struct intr_frame* f UNUSED)
         break;
 
     case SYS_CREATE:
-        if (!arg1)
+        if (!arg1) // Check NULL
+            exit(-1);
+
+        if (!is_valid_ptr(1, arg1)) // Check valid ptr
             exit(-1);
 
         lock_acquire(&lock); // 동시 접근 방지
@@ -88,7 +92,7 @@ static void exit(int status)
     thread_exit();
 }
 
-int write(int fd, const void* buffer, unsigned size)
+static int write(int fd, const void* buffer, unsigned size)
 {
     lock_acquire(&lock); // race condition 방지
     char* buf = (char*)buffer;
@@ -106,4 +110,42 @@ int write(int fd, const void* buffer, unsigned size)
     lock_release(&lock);
 
     return size;
+}
+
+/**
+ * Implement user memory access (Check allocated-ptr/kernel-memory-ptr/partially-valid-ptr)
+ *
+ * 검증하고자 하는 주소 값만 인자로 전달합니다.
+ * only call by reference argument
+ */
+static bool is_valid_ptr(int count, ...)
+{
+    /**
+     * code segment 시작주소
+     * See: lib/user/user.Ids:7-13
+     * See: Makefile.userprog:9
+     * See: userprog/process.c:445-468
+     */
+    const uint64_t CODE_SEGMENT = 0x0400000ULL;
+
+    bool is_valid = true;
+
+    va_list ptr_ap;
+    va_start(ptr_ap, count);
+
+    for (int i = 0; i < count; i++) {
+        uint64_t ptr = va_arg(ptr_ap, uint64_t);
+
+        bool is_user_segment = !(ptr < CODE_SEGMENT || ptr > USER_STACK);
+        bool is_allocated = NULL != pml4_get_page(thread_current()->pml4, ptr);
+
+        if (!(is_user_segment && is_allocated)) {
+            is_valid = false;
+            break;
+        }
+    }
+
+    va_end(ptr_ap);
+
+    return is_valid;
 }
