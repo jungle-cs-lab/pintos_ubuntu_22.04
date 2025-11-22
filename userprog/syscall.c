@@ -86,10 +86,7 @@ static void exit(int status)
 
 static int create(char* file_name, int initial_size)
 {
-    if (!file_name) // Check NULL
-        exit(-1);
-
-    check_valid_ptr(1, file_name); // Check valid ptr
+    check_valid_ptr(1, file_name);
 
     lock_acquire(&lock); // 동시 접근 방지
     int result = filesys_create(file_name, initial_size);
@@ -100,7 +97,7 @@ static int create(char* file_name, int initial_size)
 
 static int write(int fd, const void* buffer, unsigned size)
 {
-    check_valid_ptr(1, buffer); // Check valid ptr
+    check_valid_ptr(1, buffer);
 
     lock_acquire(&lock); // race condition 방지
     char* buf = (char*)buffer;
@@ -121,30 +118,38 @@ static int write(int fd, const void* buffer, unsigned size)
 }
 
 /**
- * Implement user memory access (Check allocated-ptr/kernel-memory-ptr/partially-valid-ptr)
+ * Implement user memory access
+ * Check allocated-ptr / kernel-memory-ptr / partially-valid-ptr
  *
- * 검증하고자 하는 주소 값만 인자로 전달합니다.
- * only call by reference argument
+ * Args: 검증하고자 하는 주소 값만 인자로 전달 (only call-by-ref arg)
+ *
+ * Code Segment 시작주소
+ * See: lib/user/user.Ids:7-13
+ * See: Makefile.userprog:9
+ * See: userprog/process.c:445-468
  */
 static void check_valid_ptr(int count, ...)
 {
-    /**
-     * code segment 시작주소
-     * See: lib/user/user.Ids:7-13
-     * See: Makefile.userprog:9
-     * See: userprog/process.c:445-468
-     */
-
     va_list ptr_ap;
     va_start(ptr_ap, count);
 
     for (int i = 0; i < count; i++) {
         uint64_t ptr = va_arg(ptr_ap, uint64_t);
 
-        bool not_user_segment = ptr < CODE_SEGMENT || ptr > USER_STACK;
-        bool not_allocated = pml4_get_page(thread_current()->pml4, ptr) == NULL;
+        // Check NULL
+        if (!ptr) {
+            va_end(ptr_ap);
+            exit(-1);
+        }
 
-        if (not_user_segment || not_allocated) {
+        // Check user segment
+        if (ptr < CODE_SEGMENT || ptr > USER_STACK) {
+            va_end(ptr_ap);
+            exit(-1);
+        }
+
+        // Check memory allocated
+        if (pml4_get_page(thread_current()->pml4, ptr) == NULL) {
             va_end(ptr_ap);
             exit(-1);
         }
