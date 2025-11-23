@@ -134,7 +134,7 @@ static int read(int fd, void* buffer, unsigned size)
     }
 
     check_valid_fd(fd);
-    check_valid_ptr(buffer);
+    check_valid_ptr(1, buffer);
 
     struct thread* curr = thread_current();
     struct file* f = curr->fdte[fd];
