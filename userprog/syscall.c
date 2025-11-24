@@ -1,6 +1,8 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
 #include <syscall-nr.h>
+#include <filesys/filesys.h>
+#include <filesys/file.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/loader.h"
@@ -19,6 +21,8 @@ static struct lock lock;
 static void exit(int status);
 static int create(char* file_name, int initial_size);
 static int write(int fd, const void* buffer, unsigned size);
+static int open(const char* file_name);
+static void close(int fd);
 static void check_valid_ptr(int count, ...);
 
 /* System call.
@@ -72,6 +76,14 @@ void syscall_handler(struct intr_frame* f UNUSED)
         f->R.rax = write(arg1, arg2, arg3);
         break;
 
+    case SYS_OPEN:
+        f->R.rax = open(arg1);
+        break;
+
+    case SYS_CLOSE:
+        close(arg1);
+        break;
+
     default:
         thread_exit();
     }
@@ -115,6 +127,49 @@ static int write(int fd, const void* buffer, unsigned size)
     lock_release(&lock);
 
     return size;
+}
+
+static int open(const char* file_name)
+{
+    check_valid_ptr(1, file_name);
+
+    lock_acquire(&lock);
+    struct file* f = filesys_open(file_name);
+    lock_release(&lock);
+
+    if (f == NULL) { // file 오픈 실패
+        return -1;
+    }
+
+    // file descriptor table entry 생성
+    struct thread* curr = thread_current();
+    int fd = -1;
+
+    // 3부터 순회 -> 빈 순번 할당
+    for (int i = MIN_FD; i <= MAX_FD; i++) {
+        if (curr->fdte[i] == NULL) {
+            curr->fdte[i] = f;
+            fd = i;
+            break;
+        }
+    }
+
+    return fd;
+}
+
+static void close(int fd)
+{
+    if (fd < MIN_FD || fd > MAX_FD) {
+        exit(-1);
+    }
+
+    struct thread* curr = thread_current();
+
+    lock_acquire(&lock);
+    file_close(curr->fdte[fd]); // open_cnt 보고 inode 제거
+    lock_release(&lock);
+
+    curr->fdte[fd] = NULL; // remove fdte
 }
 
 /**

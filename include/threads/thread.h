@@ -27,6 +27,11 @@ typedef int tid_t;
 #define PRI_DEFAULT 31 /* Default priority. */
 #define PRI_MAX 63     /* Highest priority. */
 
+/* File Descriptor */
+/* 0, 1, 2 콘솔 전용 */
+#define MIN_FD 3   /* fd 최소값 */
+#define MAX_FD 128 /* fd 최대값 */
+
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The
@@ -104,7 +109,8 @@ struct thread {
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
-    uint64_t* pml4; /* Page map level 4 */
+    uint64_t* pml4;            /* Page map level 4 */
+    struct file* fdte[MAX_FD]; /* file descriptor table */
 #endif
 #ifdef VM
     /* Table for whole virtual memory owned by thread. */
@@ -128,7 +134,6 @@ extern struct list sleep_list;
 extern bool more_mvp_func(const struct list_elem* a, const struct list_elem* b, void* aux);
 extern int get_priority(struct thread* t);
 extern void thread_recalculate_priority(struct thread* t);
-
 
 void thread_init(void);
 void thread_start(void);
