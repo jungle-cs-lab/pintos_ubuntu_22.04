@@ -100,8 +100,7 @@ struct thread {
     /* Shared between thread.c and synch.c. */
     struct list_elem elem; /* List element. */
     struct list files_opened;
-    int min_fd;
-
+    
     int64_t wakeup_tick;
 
 #ifdef USERPROG
