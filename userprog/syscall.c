@@ -170,18 +170,17 @@ static void check_valid_ptr(int count, ...)
 
     for (int i = 0; i < count; i++) {
         uint64_t ptr = va_arg(ptr_ap, uint64_t);
-        // 무조건 단락 나누기 필요.
+        // Check NULL
         if (ptr == NULL) {
             va_end(ptr_ap);
             exit(-1);
         }
-
-        if (!is_user_vaddr(ptr)) {
+        // check user segment
+        if (ptr < CODE_SEGMENT || ptr >= USER_STACK) {
             va_end(ptr_ap);
             exit(-1);
         }
-        // only check after validating if null pointer or valid user address,
-        // or else kernel panic insidepml4_get_page() when checking valid user address
+        // Check memory allocated
         if (pml4_get_page(thread_current()->pml4, (void*)ptr) == NULL) {
             va_end(ptr_ap);
             exit(-1);
