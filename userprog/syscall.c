@@ -24,6 +24,9 @@ static int write(int fd, const void* buffer, unsigned size);
 static int open(const char* file_name);
 static void close(int fd);
 static void check_valid_ptr(int count, ...);
+static int read(int fd, void* buffer, unsigned size);
+static int filesize(int fd);
+static void check_valid_fd(int fd);
 
 /* System call.
  *
@@ -84,6 +87,14 @@ void syscall_handler(struct intr_frame* f UNUSED)
         close(arg1);
         break;
 
+    case SYS_READ:
+        f->R.rax = read(arg1, arg2, arg3);
+        break;
+
+    case SYS_FILESIZE:
+        f->R.rax = filesize(arg1);
+        break;
+
     default:
         thread_exit();
     }
@@ -110,23 +121,34 @@ static int create(char* file_name, int initial_size)
 static int write(int fd, const void* buffer, unsigned size)
 {
     check_valid_ptr(1, buffer);
+    // need to add logic to check entire buffer
 
-    lock_acquire(&lock); // race condition 방지
-    char* buf = (char*)buffer;
+    if (fd == 1) {
+        char* buf = (char*)buffer;
 
-    if (size <= MAX_CHUNK) {
-        putbuf(buf, size);
-    } else { // 256 이상은 분할 출력
-        size_t offset = 0;
-        while (offset < size) {
-            size_t chunk_size = size - offset < MAX_CHUNK ? size - offset : MAX_CHUNK;
-            putbuf(buf + offset, chunk_size);
-            offset += chunk_size;
+        if (size <= MAX_CHUNK) {
+            putbuf(buf, size);
+        } else { // 256 이상은 분할 출력
+            size_t offset = 0;
+            while (offset < size) {
+                size_t chunk_size = size - offset < MAX_CHUNK ? size - offset : MAX_CHUNK;
+                putbuf((char*)buf + offset, chunk_size);
+                offset += chunk_size;
+            }
         }
+        return size;
     }
+
+    check_valid_fd(fd);
+
+    struct thread* curr = thread_current();
+    struct file* f = curr->fdte[fd];
+
+    lock_acquire(&lock);
+    int bytes_written = file_write(f, buffer, size);
     lock_release(&lock);
 
-    return size;
+    return bytes_written;
 }
 
 static int open(const char* file_name)
@@ -159,9 +181,7 @@ static int open(const char* file_name)
 
 static void close(int fd)
 {
-    if (fd < MIN_FD || fd > MAX_FD) {
-        exit(-1);
-    }
+    check_valid_fd(fd);
 
     struct thread* curr = thread_current();
 
@@ -211,4 +231,38 @@ static void check_valid_ptr(int count, ...)
     }
 
     va_end(ptr_ap);
+}
+
+static int read(int fd, void* buffer, unsigned size)
+{
+    check_valid_ptr(1, buffer);
+
+    check_valid_fd(fd);
+
+    struct thread* t = thread_current();
+    struct file* f = t->fdte[fd];
+
+    lock_acquire(&lock);
+    int byte_read = file_read(f, buffer, size);
+    lock_release(&lock);
+
+    return byte_read;
+}
+
+static int filesize(int fd)
+{
+    check_valid_fd(fd);
+
+    struct thread* t = thread_current();
+    struct file* f = t->fdte[fd];
+    lock_acquire(&lock);
+    size_t size = file_length(f);
+    lock_release(&lock);
+    return size;
+}
+
+static void check_valid_fd(int fd)
+{
+    if (fd < MIN_FD || fd > MAX_FD)
+        exit(-1);
 }
