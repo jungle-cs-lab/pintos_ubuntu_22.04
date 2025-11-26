@@ -364,13 +364,6 @@ int process_exec(void* f_name)
  * does nothing. */
 int process_wait(tid_t child_tid UNUSED)
 {
-    // 현재 스레드의 자식들 중 tid로 찾아서 상태 체크
-    struct thread* curr = thread_current();
-    if (!list_size(&curr->children)) {
-        timer_sleep(100); // FIXME: 더 좋은 방법 찾기
-        return -1;
-    }
-
     struct child_thread* child = get_child(child_tid);
 
     /* TID가 잘못되었거나, 호출한 프로세스의 자식이 아닌 경우 */

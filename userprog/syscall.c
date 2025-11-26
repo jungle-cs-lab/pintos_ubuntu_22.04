@@ -173,7 +173,11 @@ static int exec(const char* cmd_line)
 
 static int wait(int pid)
 {
-    // FIXME: pid 검증 로직 추가 - 자식 프로세스 중에 pid 있는지 찾기
+    /* 자식이 없으면 종료 */
+    if (!list_size(&thread_current()->children)) {
+        return -1;
+    }
+
     return process_wait(pid);
 }
 
