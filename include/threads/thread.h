@@ -5,6 +5,7 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/interrupt.h"
+#include "threads/synch.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -15,6 +16,11 @@ enum thread_status {
     THREAD_READY,   /* Not running but ready to run. */
     THREAD_BLOCKED, /* Waiting for an event to trigger. */
     THREAD_DYING    /* About to be destroyed. */
+};
+
+enum thread_exit_status {
+    EXIT_KERNEL = -1, /* 커널이 강제 종료 */
+    EXIT_NORMAL = 0,  /* 프로세스 정상 종료 */
 };
 
 /* Thread identifier type.
@@ -30,7 +36,7 @@ typedef int tid_t;
 /* File Descriptor */
 /* 0, 1, 2 콘솔 전용 */
 #define MIN_FD 3   /* fd 최소값 */
-#define MAX_FD 128 /* fd 최대값 */
+#define MAX_FD 127 /* fd 최대값 */
 
 /* A kernel thread or user process.
  *
@@ -90,18 +96,28 @@ typedef int tid_t;
  * ready state is on the run queue, whereas only a thread in the
  * blocked state is on a semaphore wait list. */
 
+struct child_thread {
+    tid_t tid;
+    enum thread_status status;           /* Child thread state. */
+    enum thread_exit_status exit_status; /* to keep track of exit status of process*/
+
+    int waited;                 /* wait 기록 추적 */
+    struct semaphore wait_sema; /* 세마포어 상태 관리 */
+    struct list_elem elem;      /* 부모가 자식에 접근 */
+};
+
 struct thread {
     /* Owned by thread.c. */
 
-    tid_t tid;                      /* Thread identifier. */
-    enum thread_status status;      /* Thread state. */
-    char name[16];                  /* Name (for debugging purposes). */
-    int priority;                   /* Priority. */
-    int base_priority;              /* Space for saving base priority when receiving donation*/
-    struct list donations;          /* Donations */
-    struct list_elem donation_elem; /* elem to put into donation list if donation recieved or given*/
-    struct lock* waiting_lock;      /* Address of Lock the thread is waiting for*/
-    int exit_status;                /* to keep track of exit status of process*/
+    tid_t tid;                           /* Thread identifier. */
+    enum thread_status status;           /* Thread state. */
+    char name[16];                       /* Name (for debugging purposes). */
+    int priority;                        /* Priority. */
+    int base_priority;                   /* Space for saving base priority when receiving donation*/
+    struct list donations;               /* Donations */
+    struct list_elem donation_elem;      /* elem to put into donation list if donation recieved or given*/
+    struct lock* waiting_lock;           /* Address of Lock the thread is waiting for*/
+    enum thread_exit_status exit_status; /* to keep track of exit status of process*/
     /* Shared between thread.c and synch.c. */
     struct list_elem elem; /* List element. */
 
@@ -109,8 +125,11 @@ struct thread {
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
-    uint64_t* pml4;            /* Page map level 4 */
-    struct file* fdte[MAX_FD]; /* file descriptor table */
+    uint64_t* pml4;                     /* Page map level 4 */
+    struct file* fdte[MAX_FD];          /* file descriptor table */
+    struct thread* parent;              /* 부모 프로세스 */
+    struct child_thread* self_metadata; /* 부모가 가진 현재 프로세스 메타데이터 연결고리 */
+    struct list children;               /* 자식 프로세스 목록 */
 #endif
 #ifdef VM
     /* Table for whole virtual memory owned by thread. */

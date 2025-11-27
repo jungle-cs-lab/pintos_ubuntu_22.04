@@ -6,19 +6,29 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/loader.h"
+#include "threads/palloc.h"
 #include "userprog/gdt.h"
 #include "threads/flags.h"
 #include "intrinsic.h"
 #include "threads/synch.h"
+#include "userprog/process.h"
+#include <string.h>
 
 void syscall_entry(void);
 void syscall_handler(struct intr_frame*);
 
-#define MAX_CHUNK 256                      /* 콘솔 출력 청크 사이즈 */
-#define CODE_SEGMENT ((uint64_t)0x0400000) /* 코드 세그먼트 시작 주소 */
+#define CONSOLE_RING_SIZE 1024 /* 콘솔 링버퍼 크기 */
+#define CONSOLE_CHUNK 256      /* 콘솔 flush 시 출력 청크 크기 */
 
 static struct lock lock;
+static struct lock console_buffer_lock;
+static char console_ring[CONSOLE_RING_SIZE];
+static size_t console_ring_len;
+
 static void exit(int status);
+static int fork(const char* thread_name, struct intr_frame* f);
+static int exec(const char* cmd_line);
+static int wait(int pid);
 static int create(char* file_name, int initial_size);
 static int write(int fd, const void* buffer, unsigned size);
 static int open(const char* file_name);
@@ -27,6 +37,8 @@ static void check_valid_ptr(int count, ...);
 static int read(int fd, void* buffer, unsigned size);
 static int filesize(int fd);
 static void check_valid_fd(int fd);
+static void flush_console_buffer(void);
+static void enqueue_console_output(const char* buf, size_t size);
 
 /* System call.
  *
@@ -51,6 +63,7 @@ void syscall_init(void)
      * mode stack. Therefore, we masked the FLAG_FL. */
     write_msr(MSR_SYSCALL_MASK, FLAG_IF | FLAG_TF | FLAG_DF | FLAG_IOPL | FLAG_AC | FLAG_NT);
     lock_init(&lock);
+    lock_init(&console_buffer_lock);
 }
 
 /* The main system call interface */
@@ -69,6 +82,18 @@ void syscall_handler(struct intr_frame* f UNUSED)
 
     case SYS_EXIT:
         exit(arg1);
+        break;
+
+    case SYS_FORK:
+        f->R.rax = fork(arg1, f);
+        break;
+
+    case SYS_EXEC:
+        f->R.rax = exec(arg1);
+        break;
+
+    case SYS_WAIT:
+        f->R.rax = wait(arg1);
         break;
 
     case SYS_CREATE:
@@ -103,8 +128,64 @@ void syscall_handler(struct intr_frame* f UNUSED)
 static void exit(int status)
 {
     struct thread* t = thread_current();
+
     t->exit_status = status;
     thread_exit();
+}
+
+static int fork(const char* thread_name, struct intr_frame* f)
+{
+    check_valid_ptr(1, thread_name);
+
+    /* thread name을 커널 영역으로 복사 */
+    char* tn_copy = palloc_get_page(0);
+    if (tn_copy == NULL)
+        return TID_ERROR;
+    strlcpy(tn_copy, thread_name, PGSIZE);
+
+    /* parent intr frame을 커널 영역으로 복사 */
+    struct intr_frame* parent_tf_copy = palloc_get_page(0);
+    if (parent_tf_copy == NULL)
+        return TID_ERROR;
+    memcpy(parent_tf_copy, f, sizeof(struct intr_frame));
+
+    tid_t tid = process_fork(tn_copy, parent_tf_copy);
+
+    palloc_free_page(tn_copy);
+    palloc_free_page(parent_tf_copy);
+
+    /*
+     * parent : return child pid
+     * child  : return 0
+     */
+    return tid;
+}
+
+static int exec(const char* cmd_line)
+{
+    check_valid_ptr(1, cmd_line);
+
+    /* cmd line을 커널 영역으로 복사 */
+    char* cl_copy;
+    cl_copy = palloc_get_page(0);
+    if (cl_copy == NULL)
+        return TID_ERROR;
+    strlcpy(cl_copy, cmd_line, PGSIZE);
+
+    process_exec(cl_copy);
+
+    // 실패하고 현재 코드 흐름으로 돌아온 경우, failure
+    exit(-1);
+}
+
+static int wait(int pid)
+{
+    /* 자식이 없으면 종료 */
+    if (!list_size(&thread_current()->children)) {
+        return -1;
+    }
+
+    return process_wait(pid);
 }
 
 static int create(char* file_name, int initial_size)
@@ -124,18 +205,8 @@ static int write(int fd, const void* buffer, unsigned size)
     // need to add logic to check entire buffer
 
     if (fd == 1) {
-        char* buf = (char*)buffer;
-
-        if (size <= MAX_CHUNK) {
-            putbuf(buf, size);
-        } else { // 256 이상은 분할 출력
-            size_t offset = 0;
-            while (offset < size) {
-                size_t chunk_size = size - offset < MAX_CHUNK ? size - offset : MAX_CHUNK;
-                putbuf((char*)buf + offset, chunk_size);
-                offset += chunk_size;
-            }
-        }
+        enqueue_console_output((char*)buffer, size);
+        flush_console_buffer();
         return size;
     }
 
@@ -149,6 +220,55 @@ static int write(int fd, const void* buffer, unsigned size)
     lock_release(&lock);
 
     return bytes_written;
+}
+
+/* 콘솔 출력 링버퍼로 enqueue */
+static void enqueue_console_output(const char* buf, size_t size)
+{
+    size_t offset = 0;
+
+    while (offset < size) {
+        lock_acquire(&console_buffer_lock);
+        size_t space = CONSOLE_RING_SIZE - console_ring_len;
+        if (space == 0) {
+            lock_release(&console_buffer_lock);
+            flush_console_buffer();
+            continue;
+        }
+
+        size_t chunk = size - offset;
+        if (chunk > space)
+            chunk = space;
+
+        memcpy(console_ring + console_ring_len, buf + offset, chunk);
+        console_ring_len += chunk;
+        offset += chunk;
+        lock_release(&console_buffer_lock);
+    }
+}
+
+/* 링버퍼에 모인 데이터를 실제 콘솔로 flush */
+static void flush_console_buffer(void)
+{
+
+    char local[CONSOLE_CHUNK];
+    size_t chunk;
+
+    lock_acquire(&console_buffer_lock);
+    if (console_ring_len == 0) {
+        lock_release(&console_buffer_lock);
+        return;
+    }
+
+    chunk = console_ring_len;
+    if (chunk > CONSOLE_CHUNK)
+        chunk = CONSOLE_CHUNK;
+    memcpy(local, console_ring, chunk);
+    memmove(console_ring, console_ring + chunk, console_ring_len - chunk);
+    console_ring_len -= chunk;
+    lock_release(&console_buffer_lock);
+
+    putbuf(local, chunk);
 }
 
 static int open(const char* file_name)

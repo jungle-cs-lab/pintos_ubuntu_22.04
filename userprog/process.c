@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <list.h>
 #include "userprog/gdt.h"
 #include "userprog/tss.h"
 #include "filesys/directory.h"
@@ -26,8 +27,11 @@
 
 static void process_cleanup(void);
 static bool load(const char* file_name, struct intr_frame* if_);
-static void initd(void* f_name);
+static void initd(void* aux);
 static void __do_fork(void*);
+static struct child_thread* get_child(tid_t child_tid);
+static struct child_thread* child_create(void);
+static void parse_thread_name(const char* cmdline, char name[16]);
 
 /* General process initializer for initd and other process. */
 static void process_init(void)
@@ -42,39 +46,68 @@ static void process_init(void)
  * Notice that THIS SHOULD BE CALLED ONCE. */
 tid_t process_create_initd(const char* file_name)
 {
-    char* fn_copy;
-    tid_t tid;
+    char* fn_copy = NULL;
+    struct initd_aux* aux = NULL;
+    struct child_thread* child = NULL;
+    tid_t tid = TID_ERROR;
+    char thread_name[16];
+    struct thread* parent = thread_current();
+
+    /* 자식 생성 상태 */
+    child = child_create();
+    if (child == NULL)
+        goto error;
+
+    aux = palloc_get_page(PAL_ZERO);
+    if (aux == NULL)
+        goto error;
 
     /* Make a copy of FILE_NAME.
      * Otherwise there's a race between the caller and load(). */
     fn_copy = palloc_get_page(0);
     if (fn_copy == NULL)
-        return TID_ERROR;
+        goto error;
     strlcpy(fn_copy, file_name, PGSIZE);
 
-    /* thread_name parsing logic necessary due to thread name size limit declared in thread.h */
-    /* this logic was chosen instead of strtok which damages original string */
-    char thread_name[16];               // thread_name length is max 15 bytes.
-    size_t len = strcspn(fn_copy, " "); // returns length of initial segment up til rejected character
-    if (len >= sizeof(thread_name))     // logic to prevent buffer over flow
-        len = sizeof(thread_name) - 1;
+    parse_thread_name(fn_copy, thread_name);
 
-    memcpy(thread_name, fn_copy, len); // copy name
-    thread_name[len] = '\0';           // implement null termination
+    aux->file_name = fn_copy;
+    aux->child = child;
+    aux->parent = parent;
 
     /* Create a new thread to execute FILE_NAME. */
-    tid = thread_create(thread_name, PRI_DEFAULT, initd, fn_copy);
+    tid = thread_create(thread_name, PRI_DEFAULT, initd, aux);
     if (tid == TID_ERROR)
-        palloc_free_page(fn_copy);
+        goto error;
+
+    child->tid = tid;
+    list_push_back(&parent->children, &child->elem);
     return tid;
+
+error:
+    if (fn_copy != NULL)
+        palloc_free_page(fn_copy);
+    if (child != NULL)
+        palloc_free_page(child);
+    if (aux != NULL)
+        palloc_free_page(aux);
+    return TID_ERROR;
 }
 
 /* A thread function that launches first user process. */
-static void initd(void* f_name)
+static void initd(void* aux)
 {
+    struct initd_aux* initd_aux = (struct initd_aux*)aux;
+    char* f_name = initd_aux->file_name;
+
 #ifdef VM
     supplemental_page_table_init(&thread_current()->spt);
 #endif
+
+    thread_current()->parent = initd_aux->parent;
+    thread_current()->self_metadata = initd_aux->child;
+
+    palloc_free_page(initd_aux);
 
     process_init();
 
@@ -87,8 +120,32 @@ static void initd(void* f_name)
  * TID_ERROR if the thread cannot be created. */
 tid_t process_fork(const char* name, struct intr_frame* if_ UNUSED)
 {
+    struct thread* current = thread_current();
+    struct child_thread* child = NULL;
+    child = child_create();
+
+    struct fork_aux aux;
+    aux.parent = current;
+    aux.if_parent = if_;
+    aux.ch = child;
+
+    sema_init(&aux.loaded, 0);
+
     /* Clone current thread to new thread.*/
-    return thread_create(name, PRI_DEFAULT, __do_fork, thread_current());
+    tid_t child_tid = thread_create(name, PRI_DEFAULT, __do_fork, &aux);
+
+    /* 부모에 자식 등록 */
+    list_push_back(&current->children, &child->elem);
+
+    sema_down(&aux.loaded);
+
+    if (aux.success != 1) {
+        list_remove(&child->elem);
+        palloc_free_page(child);
+        return TID_ERROR;
+    }
+
+    return child_tid;
 }
 
 #ifndef VM
@@ -102,22 +159,30 @@ static bool duplicate_pte(uint64_t* pte, void* va, void* aux)
     void* newpage;
     bool writable;
 
-    /* 1. TODO: If the parent_page is kernel page, then return immediately. */
+    /* 1. If the parent_page is kernel page, then return immediately. */
+    if (va < CODE_SEGMENT || va >= USER_STACK)
+        return true; /* 부모의 유저 공간만 복사하므로, 복사 대상이 아니면 건너뛰고 진행. */
 
     /* 2. Resolve VA from the parent's page map level 4. */
     parent_page = pml4_get_page(parent->pml4, va);
+    if (parent_page == NULL)
+        return false;
 
-    /* 3. TODO: Allocate new PAL_USER page for the child and set result to
-     *    TODO: NEWPAGE. */
+    /* 3. Allocate new PAL_USER page for the child and set result to NEWPAGE. */
+    newpage = palloc_get_page(PAL_USER);
+    if (newpage == NULL)
+        return false;
 
-    /* 4. TODO: Duplicate parent's page to the new page and
-     *    TODO: check whether parent's page is writable or not (set WRITABLE
-     *    TODO: according to the result). */
+    /* 4. Duplicate parent's page to the new page and check whether parent's page is writable or not
+     *    (set WRITABLE according to the result). */
+    memcpy(newpage, parent_page, PGSIZE);
+    writable = is_writable(pte);
 
-    /* 5. Add new page to child's page table at address VA with WRITABLE
-     *    permission. */
+    /* 5. Add new page to child's page table at address VA with WRITABLE permission. */
     if (!pml4_set_page(current->pml4, va, newpage, writable)) {
-        /* 6. TODO: if fail to insert page, do error handling. */
+        /* 6. if fail to insert page, do error handling. */
+        palloc_free_page(newpage);
+        return false;
     }
     return true;
 }
@@ -130,14 +195,18 @@ static bool duplicate_pte(uint64_t* pte, void* va, void* aux)
 static void __do_fork(void* aux)
 {
     struct intr_frame if_;
-    struct thread* parent = (struct thread*)aux;
+    struct fork_aux* f_aux = (struct fork_aux*)aux;
+    struct thread* parent = f_aux->parent;
     struct thread* current = thread_current();
-    /* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
-    struct intr_frame* parent_if;
+    struct intr_frame* parent_if = f_aux->if_parent;
     bool succ = true;
 
     /* 1. Read the cpu context to local stack. */
     memcpy(&if_, parent_if, sizeof(struct intr_frame));
+
+    /* Save parent/child linkage for wait(). */
+    current->parent = parent;
+    current->self_metadata = f_aux->ch;
 
     /* 2. Duplicate PT */
     current->pml4 = pml4_create();
@@ -153,19 +222,37 @@ static void __do_fork(void* aux)
     if (!pml4_for_each(parent->pml4, duplicate_pte, parent))
         goto error;
 #endif
+    /* 파일 복사 */
+    for (int i = MIN_FD; i < MAX_FD; i++) { // fdte 전수 조사
+        if (parent->fdte[i] != NULL) {
+            struct file* f = file_duplicate(parent->fdte[i]);
+            if (f == NULL)
+                goto error;
 
-    /* TODO: Your code goes here.
-     * TODO: Hint) To duplicate the file object, use `file_duplicate`
-     * TODO:       in include/filesys/file.h. Note that parent should not return
-     * TODO:       from the fork() until this function successfully duplicates
-     * TODO:       the resources of parent.*/
+            current->fdte[i] = f;
+        }
+    }
+
+    /* 자식 상태 설정 */
+    f_aux->ch->tid = current->tid;
+    f_aux->ch->status = current->status;
+    f_aux->ch->exit_status = current->exit_status;
+
+    if_.R.rax = 0; /* 자식 프로세스 반환 값 */
 
     process_init();
 
     /* Finally, switch to the newly created process. */
-    if (succ)
+    if (succ) {
+        f_aux->success = true;
+        sema_up(&f_aux->loaded);
         do_iret(&if_);
+    }
 error:
+    f_aux->success = false;
+    current->exit_status = EXIT_KERNEL;
+    f_aux->ch->exit_status = EXIT_KERNEL;
+    sema_up(&f_aux->loaded);
     thread_exit();
 }
 
@@ -267,11 +354,25 @@ int process_exec(void* f_name)
  * does nothing. */
 int process_wait(tid_t child_tid UNUSED)
 {
-    /* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
-     * XXX:       to add infinite loop here before
-     * XXX:       implementing the process_wait. */
-    timer_sleep(100);
-    return -1;
+    struct child_thread* child = get_child(child_tid);
+
+    /* TID가 잘못되었거나, 호출한 프로세스의 자식이 아닌 경우 */
+    if (child == NULL)
+        return -1;
+
+    /* 혹은 주어진 TID에 대해 process_wait()이 이미 성공적으로 호출된 적이 있는 경우 */
+    if (child->waited == 1)
+        return -1;
+
+    child->waited = 1;            /* wait 기록 */
+    sema_down(&child->wait_sema); /* 자식 완료까지 부모 프로세스 대기 */
+
+    enum thread_exit_status exit_status = child->exit_status;
+
+    list_remove(&child->elem);
+    palloc_free_page(child);
+
+    return exit_status;
 }
 
 /* Exit the process. This function is called by thread_exit (). */
@@ -283,6 +384,11 @@ void process_exit(void)
 #ifdef USERPROG             // only if user program
     if (curr->pml4 != NULL) // means thread running user code (kernel thread does not have user memory space pml4)
         printf("%s: exit(%d)\n", curr->name, curr->exit_status);
+    if (curr->self_metadata != NULL) {
+        curr->self_metadata->exit_status = curr->exit_status;
+        sema_up(&curr->self_metadata->wait_sema);
+    }
+
 #endif
 
     process_cleanup();
@@ -695,3 +801,42 @@ static bool setup_stack(struct intr_frame* if_)
     return success;
 }
 #endif /* VM */
+
+static struct child_thread* get_child(tid_t child_tid)
+{
+    struct thread* curr = thread_current();
+
+    struct list_elem* e;
+    for (e = list_begin(&curr->children); e != list_end(&curr->children); e = list_next(e)) {
+        struct child_thread* tmp_child = list_entry(e, struct child_thread, elem);
+        if (child_tid == tmp_child->tid) {
+            return tmp_child;
+        }
+    }
+    return NULL;
+}
+
+/* Initialize child thread metadata. */
+static struct child_thread* child_create(void)
+{
+    struct child_thread* child = palloc_get_page(PAL_ZERO);
+    if (child == NULL)
+        return NULL;
+
+    child->exit_status = EXIT_NORMAL;
+    child->status = THREAD_READY;
+    child->waited = 0;
+    sema_init(&child->wait_sema, 0);
+    return child;
+}
+
+/* Extract a thread name from the command line (max 15 chars + null). */
+static void parse_thread_name(const char* cmdline, char name[16])
+{
+    size_t len = strcspn(cmdline, " ");
+    if (len >= 15)
+        len = 15;
+
+    memcpy(name, cmdline, len);
+    name[len] = '\0';
+}

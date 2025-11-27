@@ -462,6 +462,11 @@ static void init_thread(struct thread* t, const char* name, int priority)
     t->magic = THREAD_MAGIC;
     list_init(&t->donations);
     t->waiting_lock = NULL;
+#ifdef USERPROG
+    list_init(&t->children);
+    t->parent = NULL;
+    t->self_metadata = NULL;
+#endif
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
