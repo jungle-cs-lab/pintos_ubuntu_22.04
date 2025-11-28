@@ -275,26 +275,35 @@ static int open(const char* file_name)
 {
     check_valid_ptr(1, file_name);
 
-    lock_acquire(&lock);
-    struct file* f = filesys_open(file_name);
-    lock_release(&lock);
-
-    if (f == NULL) { // file 오픈 실패
-        return -1;
-    }
-
-    // file descriptor table entry 생성
+    struct file* f;
     struct thread* curr = thread_current();
     int fd = -1;
 
-    // 3부터 순회 -> 빈 순번 할당
-    for (int i = MIN_FD; i <= MAX_FD; i++) {
-        if (curr->fdte[i] == NULL) {
-            curr->fdte[i] = f;
-            fd = i;
-            break;
+    lock_acquire(&lock);
+
+    if (strcmp(curr->name, file_name) == 0) { /* 현재 프로세스와 open 파일이 동일한 경우 */
+        f = curr->execute_file;
+        for (int i = MIN_FD; i <= MAX_FD; i++) {
+            if (curr->fdte[i] == f) {
+                fd = i;
+                break;
+            }
         }
+    } else { /* 새로 파일을 open 하는 경우 */
+        f = filesys_open(file_name);
+
+        if (f == NULL) { // file 오픈 실패
+            return -1;
+        }
+
+        fd = new_fd(curr, f);
+        if (fd == -1) {
+            exit(-1);
+        } else
+            curr->fdte[fd] = f; // file descriptor table entry 생성
     }
+
+    lock_release(&lock);
 
     return fd;
 }
@@ -384,5 +393,8 @@ static int filesize(int fd)
 static void check_valid_fd(int fd)
 {
     if (fd < MIN_FD || fd > MAX_FD)
+        exit(-1);
+
+    if (thread_current()->fdte[fd] == NULL)
         exit(-1);
 }

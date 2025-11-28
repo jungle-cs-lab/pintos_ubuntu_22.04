@@ -32,6 +32,7 @@ static void __do_fork(void*);
 static struct child_thread* get_child(tid_t child_tid);
 static struct child_thread* child_create(void);
 static void parse_thread_name(const char* cmdline, char name[16]);
+int new_fd(struct thread* t, struct file* f);
 
 /* General process initializer for initd and other process. */
 static void process_init(void)
@@ -391,6 +392,9 @@ void process_exit(void)
 
 #endif
 
+    file_allow_write(curr->execute_file);
+    file_close(curr->execute_file);
+
     process_cleanup();
 }
 
@@ -581,14 +585,19 @@ static bool load(const char* file_name, struct intr_frame* if_)
     /* Start address. */
     if_->rip = ehdr.e_entry;
 
-    /* TODO: Your code goes here.
-     * TODO: Implement argument passing (see project2/argument_passing.html). */
+    file_deny_write(file);
+    t->execute_file = file;
+
+    int fd = new_fd(t, file);
+    if (fd == -1) {
+        exit(-1);
+    } else
+        t->fdte[fd] = file; // file descriptor table entry 생성
 
     success = true;
 
 done:
     /* We arrive here whether the load is successful or not. */
-    file_close(file);
     return success;
 }
 
@@ -839,4 +848,15 @@ static void parse_thread_name(const char* cmdline, char name[16])
 
     memcpy(name, cmdline, len);
     name[len] = '\0';
+}
+
+int new_fd(struct thread* t, struct file* f)
+{
+    // 3부터 순회 -> 빈 순번 할당
+    for (int i = MIN_FD; i <= MAX_FD; i++) {
+        if (t->fdte[i] == NULL) {
+            return i;
+        }
+    }
+    return -1;
 }
