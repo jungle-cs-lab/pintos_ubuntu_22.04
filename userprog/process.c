@@ -326,7 +326,6 @@ int process_exec(void* f_name)
 
     /* We first kill the current context */
     if (curr->execute_file != NULL) {
-        file_allow_write(curr->execute_file);
         file_close(curr->execute_file);
         curr->execute_file = NULL;
     }
