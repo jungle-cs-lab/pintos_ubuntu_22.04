@@ -9,3 +9,9 @@
 
 cscope.*
 compile_commands.json
+
+# 개인용 utils, config 등
+.local/*
+
+# clangd LSP 캐시
+.cache
