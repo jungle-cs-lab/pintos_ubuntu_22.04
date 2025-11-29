@@ -130,6 +130,7 @@ struct thread {
     struct thread* parent;              /* 부모 프로세스 */
     struct child_thread* self_metadata; /* 부모가 가진 현재 프로세스 메타데이터 연결고리 */
     struct list children;               /* 자식 프로세스 목록 */
+    struct file* execute_file;          /* 현재 프로세스 실행한 파일 */
 #endif
 #ifdef VM
     /* Table for whole virtual memory owned by thread. */
