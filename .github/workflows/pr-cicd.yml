@@ -12,6 +12,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write
+      issues: write
 
     steps:
       - name: 레퍼지토리 체크아웃
@@ -27,13 +28,13 @@ jobs:
             make \
             perl \
             python3
-          
+
           if [ -f /usr/bin/qemu-system-i386 ]; then
             sudo ln -sf /usr/bin/qemu-system-i386 /usr/bin/qemu
           elif [ -f /usr/bin/qemu-system-x86_64 ]; then
             sudo ln -sf /usr/bin/qemu-system-x86_64 /usr/bin/qemu
           fi
-          
+
           qemu --version
 
       - name: Pintos 환경 활성화
@@ -47,23 +48,23 @@ jobs:
           PINTOSOPTS: -v
         run: |
           set +e
-          
+
           projects=(userprog)
-          
+
           echo "## 🚀 Pintos CI Report" > test-summary.md
           echo "" >> test-summary.md
           echo "**커밋 SHA:** \`${{ github.event.pull_request.head.sha }}\`" >> test-summary.md
           echo "" >> test-summary.md
-          
+
           grand_pass=0
           grand_total=0
 
           for project in "${projects[@]}"; do
             echo "::group::테스트 실행: $project"
-            
+
             if [ -d "$project" ]; then
               cd "$project"
-              
+
               make clean
               if ! make; then
                 echo "### ⛔ $project - 빌드 실패" >> "$GITHUB_WORKSPACE/test-summary.md"
@@ -72,26 +73,26 @@ jobs:
                 echo "::endgroup::"
                 continue
               fi
-              
+
               cd build
               make check VERBOSE=1 || true
-              
+
               result_files=$(find tests -name '*.result' 2>/dev/null | sort)
               total=$(echo "$result_files" | wc -l | tr -d ' ')
-              
+
               if [ "$total" -eq 0 ]; then
                 echo "### ⚠️ $project - 테스트 없음" >> "$GITHUB_WORKSPACE/test-summary.md"
                 echo "" >> "$GITHUB_WORKSPACE/test-summary.md"
               else
                 pass=0
                 fail=0
-                
+
                 echo "### 📂 $project" >> "$GITHUB_WORKSPACE/test-summary.md"
                 echo "" >> "$GITHUB_WORKSPACE/test-summary.md"
                 echo "<details>" >> "$GITHUB_WORKSPACE/test-summary.md"
                 echo "<summary><b>테스트 목록 (총 ${total}개)</b> — 펼치려면 클릭</summary>" >> "$GITHUB_WORKSPACE/test-summary.md"
                 echo "" >> "$GITHUB_WORKSPACE/test-summary.md"
-                
+
                 for result_file in $result_files; do
                   test_name=$(basename "$result_file" .result)
                   if grep -q "PASS" "$result_file" 2>/dev/null; then
@@ -102,22 +103,22 @@ jobs:
                     fail=$((fail + 1))
                   fi
                 done
-                
+
                 echo "" >> "$GITHUB_WORKSPACE/test-summary.md"
                 echo "</details>" >> "$GITHUB_WORKSPACE/test-summary.md"
                 echo "" >> "$GITHUB_WORKSPACE/test-summary.md"
-                
+
                 pass_rate=$(awk "BEGIN {printf \"%.1f%%\", ($pass/$total)*100}")
                 echo "**요약:** $pass / $total 통과 ($pass_rate)" >> "$GITHUB_WORKSPACE/test-summary.md"
                 echo "" >> "$GITHUB_WORKSPACE/test-summary.md"
-                
+
                 grand_pass=$((grand_pass + pass))
                 grand_total=$((grand_total + total))
               fi
-              
+
               cd "$GITHUB_WORKSPACE"
             fi
-            
+
             echo "::endgroup::"
           done
 
@@ -129,10 +130,10 @@ jobs:
             echo "" >> test-summary.md
             echo "**${grand_pass} / ${grand_total}** 테스트 통과 (${grand_pass_rate})" >> test-summary.md
           fi
-          
+
           echo "" >> test-summary.md
           echo "_생성 시각: $(date -u +'%Y-%m-%d %H:%M:%S UTC')_" >> test-summary.md
-          
+
           cat test-summary.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Find existing comment
@@ -140,8 +141,8 @@ jobs:
         id: find-comment
         with:
           issue-number: ${{ github.event.pull_request.number }}
-          comment-author: 'github-actions[bot]'
-          body-includes: '🚀 Pintos CI Report'
+          comment-author: "github-actions[bot]"
+          body-includes: "🚀 Pintos CI Report"
 
       - name: Create or update PR comment
         uses: peter-evans/create-or-update-comment@v4
