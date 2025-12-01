@@ -49,7 +49,7 @@ jobs:
         run: |
           set +e
 
-          projects=(userprog)
+          projects=(vm)
 
           echo "## 🚀 Pintos CI Report" > test-summary.md
           echo "" >> test-summary.md
