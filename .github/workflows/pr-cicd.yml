@@ -8,6 +8,8 @@ on:
 jobs:
   test:
     runs-on: ubuntu-22.04
+    env:
+      MY_PAT: ${{ secrets.JG3TEAMPINTOS12W }}
     timeout-minutes: 60
     permissions:
       contents: read
@@ -140,6 +142,7 @@ jobs:
         uses: peter-evans/find-comment@v3
         id: find-comment
         with:
+          token: ${{ env.MY_PAT }}
           issue-number: ${{ github.event.pull_request.number }}
           comment-author: "github-actions[bot]"
           body-includes: "🚀 Pintos CI Report"
@@ -147,6 +150,7 @@ jobs:
       - name: Create or update PR comment
         uses: peter-evans/create-or-update-comment@v4
         with:
+          token: ${{ env.MY_PAT }}
           comment-id: ${{ steps.find-comment.outputs.comment-id }}
           issue-number: ${{ github.event.pull_request.number }}
           body-path: test-summary.md
@@ -156,6 +160,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
+          token: ${{ env.MY_PAT }}
           name: pintos-test-results
           path: |
             */build/tests/**/*.output
