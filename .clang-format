@@ -29,5 +29,4 @@ IndentPPDirectives: None
 BreakBeforeBinaryOperators: None
 MaxEmptyLinesToKeep: 1
 SortIncludes: false
-AlwaysBreakAfterReturnType: None
-AlwaysBreakBeforeReturnType: None
+BreakAfterReturnType: None
