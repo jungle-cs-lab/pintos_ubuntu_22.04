@@ -10,11 +10,11 @@
 extern size_t ram_pages;
 
 /* Page map level 4 with kernel mappings only. */
-extern uint64_t *base_pml4;
+extern uint64_t* base_pml4;
 
 /* -q: Power off when kernel tasks complete? */
 extern bool power_off_when_done;
 
-void power_off (void) NO_RETURN;
+void power_off(void) NO_RETURN;
 
 #endif /* threads/init.h */
