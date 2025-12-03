@@ -3,6 +3,7 @@
 #include "threads/malloc.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
+#include "vaddr.h"
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -60,21 +61,27 @@ err:
 }
 
 /* Find VA from spt and return page. On error, return NULL. */
-struct page* spt_find_page(struct supplemental_page_table* spt UNUSED, void* va UNUSED)
+struct page* spt_find_page(struct supplemental_page_table* spt, void* va)
 {
     struct page* page = NULL;
-    /* TODO: Fill this function. */
+    struct list_elem* elem;
 
-    return page;
+    for (elem = list_begin(&spt->pages); elem != list_end(&spt->pages); elem = list_next(elem)) {
+        page = list_entry(elem, struct page, elem);
+        if (page->va == va) {
+            return page; // 리스트 순회 해서 va와 매칭시 리턴.
+        }
+    }
+    return page; // 못찾으면 NULL 리턴.
 }
 
 /* Insert PAGE into spt with validation. */
-bool spt_insert_page(struct supplemental_page_table* spt UNUSED, struct page* page UNUSED)
+bool spt_insert_page(struct supplemental_page_table* spt, struct page* page)
 {
-    int succ = false;
-    /* TODO: Fill this function. */
-
-    return succ;
+    // lock_acquire(&spt->list_lock);
+    list_push_back(&spt->pages, &page->elem);
+    // lock_release(&spt->list_lock);
+    return true;
 }
 
 void spt_remove_page(struct supplemental_page_table* spt, struct page* page)
@@ -108,8 +115,22 @@ static struct frame* vm_evict_frame(void)
  * space.*/
 static struct frame* vm_get_frame(void)
 {
-    struct frame* frame = NULL;
     /* TODO: Fill this function. */
+
+    struct frame* frame = (struct frame*)malloc(sizeof(struct frame));
+    // void* frame = palloc_get_page(PAL_USER);
+    if (frame == NULL) {
+        PANIC("malloc frame failed.");
+    }
+
+    void* page = palloc_get_page(PAL_USER);
+    if (page == NULL) {
+        free(frame);
+        PANIC("palloc frame failed.");
+    }
+
+    frame->kva = page;
+    frame->page = NULL;
 
     ASSERT(frame != NULL);
     ASSERT(frame->page == NULL);
@@ -147,10 +168,17 @@ void vm_dealloc_page(struct page* page)
 }
 
 /* Claim the page that allocate on VA. */
-bool vm_claim_page(void* va UNUSED)
+bool vm_claim_page(void* va)
 {
-    struct page* page = NULL;
     /* TODO: Fill this function */
+    struct thread* t = thread_current();
+
+    struct page* page = spt_find_page(&t->spt, va);
+    if (page == NULL)
+        return false;
+
+    if (page->frame != NULL)
+        return true;
 
     return vm_do_claim_page(page);
 }
@@ -159,19 +187,28 @@ bool vm_claim_page(void* va UNUSED)
 static bool vm_do_claim_page(struct page* page)
 {
     struct frame* frame = vm_get_frame();
-
+    if (frame == NULL) {
+        return false;
+    }
     /* Set links */
     frame->page = page;
     page->frame = frame;
 
     /* TODO: Insert page table entry to map page's VA to frame's PA. */
-
+    pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable);
+    if (page->type == VM_ANON) {
+        memset(page, 0, PGSIZE);
+    } else {
+        ; // todo...
+    }
     return swap_in(page, frame->kva);
 }
 
 /* Initialize new supplemental page table */
-void supplemental_page_table_init(struct supplemental_page_table* spt UNUSED)
+void supplemental_page_table_init(struct supplemental_page_table* spt)
 {
+    list_init(&spt->pages);
+    // lock_init(&list_lock);
 }
 
 /* Copy supplemental page table from src to dst */

@@ -42,8 +42,11 @@ struct thread;
  * DO NOT REMOVE/MODIFY PREDEFINED MEMBER OF THIS STRUCTURE. */
 struct page {
     const struct page_operations* operations;
-    void* va;            /* Address in terms of user space */
-    struct frame* frame; /* Back reference for frame */
+    void* va;              /* Address in terms of user space */
+    struct frame* frame;   /* Back reference for frame */
+    struct list_elem elem; // 연결리스트로 사용할 elem
+    bool writable;          // page구조체에 상태,타입,...등
+    enum vm_type type;
 
     /* Your implementation */
 
@@ -85,7 +88,10 @@ struct page_operations {
 /* Representation of current process's memory space.
  * We don't want to force you to obey any specific design for this struct.
  * All designs up to you for this. */
-struct supplemental_page_table {};
+struct supplemental_page_table {
+    struct list pages;     // page 연결리스트
+    // struct lock list_lock;
+};
 
 #include "threads/thread.h"
 void supplemental_page_table_init(struct supplemental_page_table* spt);
