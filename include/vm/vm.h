@@ -35,6 +35,12 @@ enum vm_type {
 struct page_operations;
 struct thread;
 
+struct executable_load_aux {
+    off_t ofs;
+    size_t page_read_bytes;
+    size_t page_zero_bytes;
+};
+
 #define VM_TYPE(type) ((type) & 7)
 
 /* The representation of "page".
