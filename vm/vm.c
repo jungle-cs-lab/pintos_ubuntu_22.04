@@ -67,16 +67,25 @@ err:
 struct page* spt_find_page(struct supplemental_page_table* spt UNUSED, void* va UNUSED)
 {
     struct page* page = NULL;
-    /* TODO: Fill this function. */
+    struct list_elem* e;
+
+    for (e = list_begin(&spt->pages); e != list_end(&spt->pages); e = list_next(e))
+        if (va == list_entry(e, struct page, elem)->va)
+            return (struct page*)e;
 
     return page;
 }
 
 /* Insert PAGE into spt with validation. */
-bool spt_insert_page(struct supplemental_page_table* spt UNUSED, struct page* page UNUSED)
+bool spt_insert_page(struct supplemental_page_table* spt UNUSED, struct page* page)
 {
     int succ = false;
-    /* TODO: Fill this function. */
+
+    list_push_back(&spt->pages, &page->elem);
+
+    // validataion
+    // (if validated)
+    succ = true;
 
     return succ;
 }
@@ -183,6 +192,7 @@ static bool vm_do_claim_page(struct page* page)
 /* Initialize new supplemental page table */
 void supplemental_page_table_init(struct supplemental_page_table* spt UNUSED)
 {
+    list_init(&spt->pages);
 }
 
 /* Copy supplemental page table from src to dst */

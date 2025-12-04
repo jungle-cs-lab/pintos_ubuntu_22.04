@@ -47,6 +47,8 @@ struct page {
     struct frame* frame; /* Back reference for frame */
 
     /* Your implementation */
+    struct list_elem elem; // 연결리스트로 사용할 elem
+    bool writable;
 
     /* Per-type data are binded into the union.
      * Each function automatically detects the current union */
@@ -91,7 +93,9 @@ struct page_operations {
 /* Representation of current process's memory space.
  * We don't want to force you to obey any specific design for this struct.
  * All designs up to you for this. */
-struct supplemental_page_table {};
+struct supplemental_page_table {
+    struct list pages; // page 연결리스트
+};
 
 #include "threads/thread.h"
 void supplemental_page_table_init(struct supplemental_page_table* spt);
