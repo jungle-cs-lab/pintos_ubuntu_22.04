@@ -65,6 +65,10 @@ struct frame {
     struct list_elem elem; // frame_list의 요소로 구분
     void* kva;
     struct page* page;
+
+    // TODO:: h/w 레벨에서 체크해준다는데... 복사해와야하나? OS레벨에서 체크 해줘야하나?
+    bool accessed; // eviction할 때 frame 테이블 보니까
+    bool dirty;    // eviction할 때 frame 테이블 보니까
 };
 
 /* The function table for page operations.
