@@ -77,7 +77,7 @@ bool spt_insert_page(struct supplemental_page_table* spt UNUSED, struct page* pa
     return succ;
 }
 
-void spt_remove_page(struct supplemental_page_table* spt, struct page* page)
+bool spt_remove_page(struct supplemental_page_table* spt, struct page* page)
 {
     vm_dealloc_page(page);
     return true;
