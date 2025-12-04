@@ -1,6 +1,7 @@
 #ifndef VM_VM_H
 #define VM_VM_H
 #include <stdbool.h>
+#include "list.h"
 #include "threads/palloc.h"
 
 enum vm_type {
@@ -61,6 +62,7 @@ struct page {
 
 /* The representation of "frame" */
 struct frame {
+    struct list_elem elem; // frame_list의 요소로 구분
     void* kva;
     struct page* page;
 };

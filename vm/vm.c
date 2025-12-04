@@ -1,8 +1,11 @@
 /* vm.c: Generic interface for virtual memory objects. */
 
+#include "list.h"
 #include "threads/malloc.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
+
+struct list frame_list;
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -16,6 +19,7 @@ void vm_init(void)
     register_inspect_intr();
     /* DO NOT MODIFY UPPER LINES. */
     /* TODO: Your code goes here. */
+    list_init(&frame_list);
 }
 
 /* Get the type of the page. This function is useful if you want to know the
@@ -108,8 +112,15 @@ static struct frame* vm_evict_frame(void)
  * space.*/
 static struct frame* vm_get_frame(void)
 {
-    struct frame* frame = NULL;
-    /* TODO: Fill this function. */
+    struct frame* frame = malloc(sizeof(struct frame));
+
+    list_push_back(&frame_list, &frame->elem);
+
+    frame->page = NULL;
+    frame->kva = palloc_get_page(PAL_USER);
+    if (frame->kva == NULL) // eviction needed
+        if ((frame->kva = vm_evict_frame()->kva) == NULL)
+            PANIC("Eviction needed, but fail.");
 
     ASSERT(frame != NULL);
     ASSERT(frame->page == NULL);
