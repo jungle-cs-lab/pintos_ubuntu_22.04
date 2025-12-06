@@ -195,8 +195,11 @@ bool vm_try_handle_fault(struct intr_frame* f, void* addr, bool user, bool write
     struct page* page = NULL;
     /* TODO: Validate the fault */
     /* TODO: Your code goes here */
-    if (!(is_user_vaddr(addr)) || addr == NULL) {
-        PANIC("user addr error");
+    if (addr == NULL) {
+        PANIC("addr == NULL");
+    }
+    if (!is_user_vaddr(addr)) {
+        PANIC("not user addr");
     }
     page = spt_find_page(&thread_current()->spt, addr);
     if (page == NULL) {
