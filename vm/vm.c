@@ -5,6 +5,7 @@
 #include "vm/inspect.h"
 #include "threads/vaddr.h"
 #include "threads/mmu.h"
+#include <stdio.h>
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -99,9 +100,8 @@ struct page* spt_find_page(struct supplemental_page_table* spt, void* va)
     for (elem = list_begin(&spt->pages); elem != list_end(&spt->pages); elem = list_next(elem)) {
         page = list_entry(elem, struct page, elem);
         if (pg_round_down(page->va) == target) {
-            printf("found!! : %p\n", page);
-            printf("found!! : %p\n", page->va);
-            printf("found!! : %p\n", page->frame);
+            printf("found!!: page: %p, page->va: %p, target: %p, page->frame->kva: %p\n", page, page->va, target,
+                   page->frame->kva);
             return page; // 리스트 순회 해서 va와 매칭시 리턴.
         }
     }
