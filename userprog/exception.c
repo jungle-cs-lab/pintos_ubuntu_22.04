@@ -114,6 +114,7 @@ static void kill(struct intr_frame* f)
    [IA32-v3a] section 5.15 "Exception and Interrupt Reference". */
 static void page_fault(struct intr_frame* f)
 {
+    printf("page fault start\n");
     bool not_present; /* True: not-present page, false: writing r/o page. */
     bool write;       /* True: access was write, false: access was read. */
     bool user;        /* True: access by user, false: access by kernel. */
@@ -136,14 +137,20 @@ static void page_fault(struct intr_frame* f)
     user = (f->error_code & PF_U) != 0;
 
     /* 유저 영역에서 패닉은 프로세스만 종료 */
-    if (user)
-        exit(-1);
+    // if (user)
+    //     exit(-1);
 
 #ifdef VM
     /* For project 3 and later. */
     if (vm_try_handle_fault(f, fault_addr, user, write, not_present))
         return;
 #endif
+    not_present = (f->error_code & PF_P) == 0;
+    write = (f->error_code & PF_W) != 0;
+    user = (f->error_code & PF_U) != 0;
+
+    // if (user)
+    //     exit(-1);
 
     /* Count page faults. */
     page_fault_cnt++;
