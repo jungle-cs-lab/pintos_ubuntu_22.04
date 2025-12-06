@@ -2,6 +2,7 @@
 
 #include "vm/vm.h"
 #include "devices/disk.h"
+#include <stdio.h>
 
 /* DO NOT MODIFY BELOW LINE */
 static struct disk* swap_disk;
@@ -27,6 +28,7 @@ void vm_anon_init(void)
 /* Initialize the file mapping */
 bool anon_initializer(struct page* page, enum vm_type type, void* kva)
 {
+    printf("SWAP_IN: anon_page_initialize\n");
     /* Set up the handler */
     page->operations = &anon_ops;
 
@@ -38,6 +40,7 @@ bool anon_initializer(struct page* page, enum vm_type type, void* kva)
 static bool anon_swap_in(struct page* page, void* kva)
 {
     struct anon_page* anon_page = &page->anon;
+    return true;
 }
 
 /* Swap out the page by writing contents to the swap disk. */
