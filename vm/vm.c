@@ -53,6 +53,7 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void* upage, bool writabl
 
     /* Check wheter the upage is already occupied or not. */
 
+    printf("running vm_alloc_page, invoked by load_segment per 4KB PGSIZE\n");
     if (spt_find_page(spt, upage) == NULL) {
 
         struct page* page = (struct page*)malloc(sizeof(struct page));
@@ -97,23 +98,31 @@ struct page* spt_find_page(struct supplemental_page_table* spt, void* va)
     void* target = pg_round_down(va);
     printf("find start : %p -> %p\n", va, target);
 
+    int count = 0;
+    int is_found = 0;
     for (elem = list_begin(&spt->pages); elem != list_end(&spt->pages); elem = list_next(elem)) {
         page = list_entry(elem, struct page, elem);
         if (pg_round_down(page->va) == target) {
             printf("found!!: page: %p, page->va: %p, target: %p, page->frame->kva: %p\n", page, page->va, target,
                    page->frame->kva);
+            is_found = 1;
             return page; // 리스트 순회 해서 va와 매칭시 리턴.
         }
+        printf("iter count: %d &&& ", ++count);
     }
+    printf("\n");
+    printf("find end, iter count: %d, is_found?: %s\n", count, is_found == 1 ? "found!" : "no");
     return NULL;
 }
 
 /* Insert PAGE into spt with validation. */
 bool spt_insert_page(struct supplemental_page_table* spt, struct page* page)
 {
+    printf("-------------------->>>>>>>>>>start inserting: %p\n", page->va);
     if (!spt_find_page(spt, page->va)) {
         list_push_back(&spt->pages, &page->elem);
     }
+    printf("--------------------<<<<<<<<<<end inserting: %p\n\n", page->va);
     return true;
 }
 
