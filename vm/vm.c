@@ -75,14 +75,14 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void* upage, bool writabl
             break;
         }
 
-        struct page page;
+        struct page* page = malloc(PGSIZE);
         // 2. call uninit_new with it.
-        uninit_new(&page, upage, init, type, aux, page_initializer);
+        uninit_new(page, upage, init, type, aux, page_initializer);
 
         // MEMO:: what fields should I modify at the moment that is "after calling the uninit_new" ???
 
         /* TODO: Insert the page into the spt. */
-        spt_insert_page(spt, &page);
+        spt_insert_page(spt, page);
 
         // 성공적으로 page를 alloc한다면
         return true;
