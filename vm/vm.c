@@ -53,7 +53,7 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void* upage, bool writabl
 
     /* Check wheter the upage is already occupied or not. */
 
-    printf("running vm_alloc_page, invoked by load_segment per 4KB PGSIZE\n");
+    // printf("running vm_alloc_page, invoked by load_segment per 4KB PGSIZE\n");
     if (spt_find_page(spt, upage) == NULL) {
 
         struct page* page = (struct page*)malloc(sizeof(struct page));
@@ -78,14 +78,14 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void* upage, bool writabl
             return false;
         }
 
-        printf("1: type: %d, page wr: %s, arg wr: %s\n", page->type, page->writable == true ? "T" : "F",
-               writable == true ? "T" : "F");
+        // printf("1: type: %d, page wr: %s, arg wr: %s\n", page->type, page->writable == true ? "T" : "F",
+        //        writable == true ? "T" : "F");
         uninit_new(page, upage, init, type, aux, initializer);
-        printf("2: type: %d, page wr: %s, arg wr: %s\n", page->type, page->writable == true ? "T" : "F",
-               writable == true ? "T" : "F");
+        // printf("2: type: %d, page wr: %s, arg wr: %s\n", page->type, page->writable == true ? "T" : "F",
+        //        writable == true ? "T" : "F");
         page->writable = writable;
         spt_insert_page(spt, page);
-        printf("3: page wr: %s, arg wr: %s\n", page->writable == true ? "T" : "F", writable == true ? "T" : "F");
+        // printf("3: page wr: %s, arg wr: %s\n", page->writable == true ? "T" : "F", writable == true ? "T" : "F");
 
         return true;
     }
@@ -101,14 +101,14 @@ struct page* spt_find_page(struct supplemental_page_table* spt, void* va)
     struct list_elem* elem;
 
     void* target = pg_round_down(va);
-    printf("find start : %p -> %p\n", va, target);
+    // printf("find start : %p -> %p\n", va, target);
 
     int count = 0;
     int is_found = 0;
     for (elem = list_begin(&spt->pages); elem != list_end(&spt->pages); elem = list_next(elem)) {
         page = list_entry(elem, struct page, elem);
         if (pg_round_down(page->va) == target) {
-            printf("found!!: page: %p, page->va: %p, target: %p\n", page, page->va, target);
+            // printf("found!!: page: %p, page->va: %p, target: %p\n", page, page->va, target);
             // printf("page->frame: %p\n", page->frame);
             // printf("page->frame->kva: %p\n", page->frame->kva);
             is_found = 1;
@@ -116,19 +116,19 @@ struct page* spt_find_page(struct supplemental_page_table* spt, void* va)
         }
         count++;
     }
-    printf("\n");
-    printf("find end, iter count: %d, is_found?: %s\n", count, is_found == 1 ? "found!" : "no");
+    // printf("\n");
+    // printf("find end, iter count: %d, is_found?: %s\n", count, is_found == 1 ? "found!" : "no");
     return NULL;
 }
 
 /* Insert PAGE into spt with validation. */
 bool spt_insert_page(struct supplemental_page_table* spt, struct page* page)
 {
-    printf("-------------------->>>>>>>>>>start inserting: %p\n", page->va);
+    // printf("-------------------->>>>>>>>>>start inserting: %p\n", page->va);
     if (!spt_find_page(spt, page->va)) {
         list_push_back(&spt->pages, &page->elem);
     }
-    printf("--------------------<<<<<<<<<<end inserting: %p\n\n", page->va);
+    // printf("--------------------<<<<<<<<<<end inserting: %p\n\n", page->va);
     return true;
 }
 
@@ -207,7 +207,7 @@ bool vm_try_handle_fault(struct intr_frame* f, void* addr, bool user, bool write
     if (!is_user_vaddr(addr)) {
         PANIC("not user addr");
     }
-    printf("try_handle_fault invokes: spt_find_page\n");
+    // printf("try_handle_fault invokes: spt_find_page\n");
     page = spt_find_page(&thread_current()->spt, addr);
     if (page == NULL) {
         PANIC("page null error");
@@ -234,7 +234,7 @@ bool vm_claim_page(void* va)
         return false;
     }
 
-    printf("vm_claim_page invokes: spt_find_page\n");
+    // printf("vm_claim_page invokes: spt_find_page\n");
     struct page* page = spt_find_page(&t->spt, va);
     if (page == NULL) {
         return false;
@@ -244,7 +244,7 @@ bool vm_claim_page(void* va)
         return true;
     }
 
-    printf("wow, found page and frame is NULL!\n");
+    // printf("wow, found page and frame is NULL!\n");
 
     return vm_do_claim_page(page);
 }
@@ -264,13 +264,13 @@ bool vm_do_claim_page(struct page* page)
     }
 
     /* TODO: Insert page table entry to map page's VA to frame's PA. */
-    printf("pml4_set_page with wr: %s\n", page->writable == true ? "T" : "F");
+    // printf("pml4_set_page with wr: %s\n", page->writable == true ? "T" : "F");
     // if (!pml4_set_page(thread_current()->pml4, page->va, frame->kva, page->writable))
     if (!pml4_set_page(thread_current()->pml4, page->va, frame->kva, true))
         PANIC("pml4_set_page failed");
 
-    printf("do_claim: accessing page va: %p, type: %d\n", page->va, page->type);
-    printf("do_claim: mapped frame kva: %p\n", frame->kva);
+    // printf("do_claim: accessing page va: %p, type: %d\n", page->va, page->type);
+    // printf("do_claim: mapped frame kva: %p\n", frame->kva);
 
     return swap_in(page, frame->kva);
 }

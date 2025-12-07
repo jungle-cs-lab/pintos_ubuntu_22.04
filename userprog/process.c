@@ -366,7 +366,7 @@ int process_exec(void* f_name)
 
     // move palloc_free_page after arg_passing()
     palloc_free_page(file_name);
-    printf("here?;\n");
+    // printf("here?;\n");
     /* Start switched process. */
     do_iret(&_if);
     NOT_REACHED();
@@ -854,7 +854,7 @@ static bool load_segment(struct file* file, off_t ofs, uint8_t* upage, uint32_t 
 /* Create a PAGE of stack at the USER_STACK. Return true on success. */
 static bool setup_stack(struct intr_frame* if_)
 {
-    printf("----- start setup_stack\n");
+    // printf("----- start setup_stack\n");
     bool success = false;
     void* stack_bottom = (void*)(((uint8_t*)USER_STACK) - PGSIZE);
 
@@ -868,7 +868,7 @@ static bool setup_stack(struct intr_frame* if_)
         return false;
     }
 
-    printf("stack bottom: %p, userstack: %p\n", stack_bottom, USER_STACK);
+    // printf("stack bottom: %p, userstack: %p\n", stack_bottom, USER_STACK);
     // printf("----- setup_stack page with wr: %s\n", ((struct page*)stack_bottom)->writable == true ? "T" : "F");
     // ((struct page*)stack_bottom)->writable = true;
     success = vm_claim_page(stack_bottom);
