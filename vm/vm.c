@@ -62,7 +62,6 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void* upage, bool writabl
             return false;
         }
         page->va = pg_round_down(upage);
-        page->writable = writable;
         page->frame = NULL;
 
         bool (*initializer)(struct page*, enum vm_type, void*);
@@ -84,6 +83,7 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void* upage, bool writabl
         uninit_new(page, upage, init, type, aux, initializer);
         printf("2: type: %d, page wr: %s, arg wr: %s\n", page->type, page->writable == true ? "T" : "F",
                writable == true ? "T" : "F");
+        page->writable = writable;
         spt_insert_page(spt, page);
         printf("3: page wr: %s, arg wr: %s\n", page->writable == true ? "T" : "F", writable == true ? "T" : "F");
 
