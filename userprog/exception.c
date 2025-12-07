@@ -114,7 +114,6 @@ static void kill(struct intr_frame* f)
    [IA32-v3a] section 5.15 "Exception and Interrupt Reference". */
 static void page_fault(struct intr_frame* f)
 {
-    // printf("page fault start\n");
     bool not_present; /* True: not-present page, false: writing r/o page. */
     bool write;       /* True: access was write, false: access was read. */
     bool user;        /* True: access by user, false: access by kernel. */
@@ -126,7 +125,6 @@ static void page_fault(struct intr_frame* f)
        that caused the fault (that's f->rip). */
 
     fault_addr = (void*)rcr2();
-    // printf("fault addre: %p\n", fault_addr);
 
     /* Turn interrupts back on (they were only off so that we could
        be assured of reading CR2 before it changed). */
@@ -136,10 +134,6 @@ static void page_fault(struct intr_frame* f)
     not_present = (f->error_code & PF_P) == 0;
     write = (f->error_code & PF_W) != 0;
     user = (f->error_code & PF_U) != 0;
-    // printf("not_present: %s,write: %s, user: %s\n ", not_present ? "T" : "F", write ? "T" : "F", user ? "T" : "F");
-    // printf("Page fault at %p: %s error %s page in %s context.\n", fault_addr,
-    //        not_present ? "not present" : "rights violation", write ? "writing" : "reading", user ? "user" :
-    //        "kernel");
 
     /* 유저 영역에서 패닉은 프로세스만 종료 */
     // if (user)
