@@ -3,6 +3,13 @@
 #include "threads/malloc.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
+#include <hash.h>
+#include <bitmap.h>
+#include "threads/vaddr.h"
+#include "threads/mmu.h"
+
+static struct frame* frames;
+struct bitmap* frame_table;
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -16,6 +23,17 @@ void vm_init(void)
     register_inspect_intr();
     /* DO NOT MODIFY UPPER LINES. */
     /* TODO: Your code goes here. */
+    /* global 테이블 초기화 */
+    // frame table
+    size_t frame_count = user_pool_pages();
+    frame_table = bitmap_create(frame_count);
+    frames = malloc(sizeof *frames * frame_count);
+    for (size_t i = 0; i < frame_count; i++) {
+        frames[i].kva = user_pool_base + i * PGSIZE;
+        frames[i].page = NULL;
+    }
+    // swap table
+    // file mapping table
 }
 
 /* Get the type of the page. This function is useful if you want to know the
@@ -36,6 +54,8 @@ enum vm_type page_get_type(struct page* page)
 static struct frame* vm_get_victim(void);
 static bool vm_do_claim_page(struct page* page);
 static struct frame* vm_evict_frame(void);
+static uint64_t spt_hash(const struct hash_elem* e, void* aux);
+static bool spt_hash_less(const struct hash_elem* a, const struct hash_elem* b, void* aux);
 
 /* Create the pending page object with initializer. If you want to create a
  * page, do not create it directly and make it through this function or
@@ -111,6 +131,16 @@ static struct frame* vm_get_frame(void)
     struct frame* frame = NULL;
     /* TODO: Fill this function. */
 
+    // 가용 가능한 프레임이 있는지 체크
+    size_t free_frame_index = bitmap_scan_and_flip(frame_table, 0, 1, false);
+    // 있으면, 프레임 바인딩
+    if (free_frame_index >= 0 && free_frame_index < user_pool_pages()) {
+        frame = &frames[free_frame_index];
+    }
+    // 없으면, evict 진행후 프레임 바인딩
+    else {
+    }
+
     ASSERT(frame != NULL);
     ASSERT(frame->page == NULL);
     return frame;
@@ -170,19 +200,76 @@ static bool vm_do_claim_page(struct page* page)
 }
 
 /* Initialize new supplemental page table */
-void supplemental_page_table_init(struct supplemental_page_table* spt UNUSED)
+void supplemental_page_table_init(struct supplemental_page_table* spt)
 {
+    /* init */
+    hash_init(&spt->hash_table, spt_hash, spt_hash_less, NULL);
+
+    /* init spt entry */
+    // spt->origin = ZERO_PAGE;
+    // spt->dirty = false;
+    // spt->present = false;
+    // spt->frame = NULL;
+    // spt->initializer = NULL;
 }
 
 /* Copy supplemental page table from src to dst */
-bool supplemental_page_table_copy(struct supplemental_page_table* dst UNUSED,
-                                  struct supplemental_page_table* src UNUSED)
+bool supplemental_page_table_copy(struct supplemental_page_table* dst, struct supplemental_page_table* src)
 {
+    // TODO: lock
+
+    // src 해시맵을 순회
+    struct hash_iterator i;
+    hash_first(&i, src);
+    while (hash_next(&i)) {
+        struct supplemental_page_table_entry* src_spte =
+            hash_entry(hash_cur(&i), struct supplemental_page_table_entry, elem);
+
+        /* spte 복제 */
+        struct supplemental_page_table_entry* copy_spte;
+        copy_spte = malloc(sizeof *copy_spte);
+        copy_spte->origin = src_spte->origin;
+        copy_spte->dirty = src_spte->dirty;
+        copy_spte->present = src_spte->present;
+        copy_spte->frame = src_spte->frame;
+        copy_spte->initializer = src_spte->initializer;
+
+        hash_insert(dst, &copy_spte->elem);
+    }
 }
 
 /* Free the resource hold by the supplemental page table */
-void supplemental_page_table_kill(struct supplemental_page_table* spt UNUSED)
+void supplemental_page_table_kill(struct supplemental_page_table* spt)
 {
-    /* TODO: Destroy all the supplemental_page_table hold by thread and
-     * TODO: writeback all the modified contents to the storage. */
+    // TODO: lock
+
+    // free spte
+    struct hash_iterator i;
+    hash_first(&i, &spt->hash_table);
+    while (hash_next(&i)) {
+        struct supplemental_page_table_entry* spte =
+            hash_entry(hash_cur(&i), struct supplemental_page_table_entry, elem);
+        free(spte);
+    }
+
+    // destroy spt
+    hash_destroy(&spt->hash_table, NULL);
+
+    // spte의 프레임은 해제 안해도 되겠지?
+}
+
+/* 구조체의 멤버를 이용해서 같은 버킷에 저장하도록 하는 장치 */
+static uint64_t spt_hash(const struct hash_elem* e, void* aux)
+{
+    const struct supplemental_page_table_entry* pt = hash_entry(e, struct supplemental_page_table_entry, elem);
+    return hash_bytes(&pt->frame,
+                      sizeof pt->frame); // FIXME: frame을 아직 할당 받지 않을 수 있기 때문에, 다른 멤버로 변경 필요
+}
+
+/* 해시 값이 충돌했을 때, 버킷 내에서 같은 키인지 다른 키인지 가려주는 장치 */
+static bool spt_hash_less(const struct hash_elem* a, const struct hash_elem* b, void* aux)
+{
+    const struct supplemental_page_table_entry* pt_a = hash_entry(a, struct supplemental_page_table_entry, elem);
+    const struct supplemental_page_table_entry* pt_b = hash_entry(b, struct supplemental_page_table_entry, elem);
+    return &pt_a->frame < &pt_b->frame;
 }

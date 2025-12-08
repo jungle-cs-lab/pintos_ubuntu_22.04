@@ -2,6 +2,7 @@
 #define VM_VM_H
 #include <stdbool.h>
 #include "threads/palloc.h"
+#include <hash.h>
 
 enum vm_type {
     /* page not initialized */
@@ -22,6 +23,13 @@ enum vm_type {
 
     /* DO NOT EXCEED THIS VALUE. */
     VM_MARKER_END = (1 << 31),
+};
+
+/* 페이지 출처 */
+enum page_origin {
+    ZERO_PAGE = 0,
+    FILE = 1,
+    SWAP = 2,
 };
 
 #include "vm/uninit.h"
@@ -63,6 +71,7 @@ struct page {
 struct frame {
     void* kva;
     struct page* page;
+    // ft bitmap index
 };
 
 /* The function table for page operations.
@@ -85,7 +94,19 @@ struct page_operations {
 /* Representation of current process's memory space.
  * We don't want to force you to obey any specific design for this struct.
  * All designs up to you for this. */
-struct supplemental_page_table {};
+struct supplemental_page_table_entry {
+    enum page_origin origin;
+    bool dirty;                                             /* flush 필요한지 확인 */
+    bool present;                                           /* 메모리에 있는지 */
+    struct frame* frame;                                    /* 할당된 frame */
+    bool (*initializer)(struct page*, enum vm_type, void*); /* anon/file-backed 초기화 함수 */
+
+    struct hash_elem elem;
+};
+
+struct supplemental_page_table {
+    struct hash hash_table;
+};
 
 #include "threads/thread.h"
 void supplemental_page_table_init(struct supplemental_page_table* spt);
