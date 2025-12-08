@@ -36,7 +36,7 @@ enum vm_type page_get_type(struct page* page)
 
 /* Helpers */
 static struct frame* vm_get_victim(void);
-bool vm_do_claim_page(struct page* page);
+static bool vm_do_claim_page(struct page* page);
 static struct frame* vm_evict_frame(void);
 
 /* Create the pending page object with initializer. If you want to create a
@@ -53,8 +53,8 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void* upage, bool writabl
     /* Check wheter the upage is already occupied or not. */
     if (spt_find_page(spt, upage) == NULL) {
 
-        struct page* page = (struct page*)malloc(sizeof(struct page));
-        if (page == NULL) {
+        struct page* new_page = (struct page*)malloc(sizeof(struct page));
+        if (new_page == NULL) {
             PANIC("page alloc failed.");
             return false;
         }
@@ -69,20 +69,29 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void* upage, bool writabl
             initializer = file_backed_initializer;
             break;
         default:
-            free(page);
+            free(new_page);
             return false;
         }
 
-        uninit_new(page, upage, init, type, aux, initializer);
-        page->writable = writable;
-        spt_insert_page(spt, page);
+        uninit_new(new_page, upage, init, type, aux, initializer);
+        new_page->writable = writable;
 
-        return true;
+        return spt_insert_page(spt, new_page);
     }
-    goto err;
-err:
     return false;
 }
+
+/*  // 혹시 쓸수도 있으니 ..?
+    if (spt_insert_page(spt, new_page) == false) {
+        goto err;
+    }
+
+    return true;
+}
+goto err;
+err:
+return false;
+}*/
 
 /* Find VA from spt and return page. On error, return NULL. */
 struct page* spt_find_page(struct supplemental_page_table* spt, void* va)
@@ -94,7 +103,7 @@ struct page* spt_find_page(struct supplemental_page_table* spt, void* va)
 
     for (elem = list_begin(&spt->pages); elem != list_end(&spt->pages); elem = list_next(elem)) {
         page = list_entry(elem, struct page, elem);
-        if (pg_round_down(page->va) == target)
+        if (page->va == target)
             return page; // 리스트 순회 해서 va와 매칭시 리턴.
     }
 
@@ -104,10 +113,12 @@ struct page* spt_find_page(struct supplemental_page_table* spt, void* va)
 /* Insert PAGE into spt with validation. */
 bool spt_insert_page(struct supplemental_page_table* spt, struct page* page)
 {
-    if (!spt_find_page(spt, page->va)) {
-        list_push_back(&spt->pages, &page->elem);
+    ASSERT(page != NULL);
+    ASSERT(page->va != NULL);
+    list_push_back(&spt->pages, &page->elem);
+    if (spt_find_page(spt, page->va) != page) { // insert 잘됐는지 검증
+        return false;
     }
-
     return true;
 }
 
@@ -149,13 +160,13 @@ static struct frame* vm_get_frame(void)
         PANIC("malloc frame failed.");
     }
 
-    void* page = palloc_get_page(PAL_USER);
-    if (page == NULL) {
+    void* upage = palloc_get_page(PAL_USER);
+    if (upage == NULL) {
         free(frame);
         PANIC("palloc frame failed.");
     }
 
-    frame->kva = page;
+    frame->kva = upage;
     frame->page = NULL;
 
     ASSERT(frame != NULL);
@@ -176,7 +187,7 @@ static bool vm_handle_wp(struct page* page UNUSED)
 /* Return true on success */
 bool vm_try_handle_fault(struct intr_frame* f, void* addr, bool user, bool write, bool not_present)
 {
-    struct supplemental_page_table* spt UNUSED = &thread_current()->spt;
+    struct supplemental_page_table* spt = &thread_current()->spt;
     struct page* page = NULL;
     /* TODO: Validate the fault */
     /* TODO: Your code goes here */
@@ -226,7 +237,7 @@ bool vm_claim_page(void* va)
 }
 
 /* Claim the PAGE and set up the mmu. */
-bool vm_do_claim_page(struct page* page)
+static bool vm_do_claim_page(struct page* page)
 {
     struct frame* frame = vm_get_frame();
     if (frame == NULL) {

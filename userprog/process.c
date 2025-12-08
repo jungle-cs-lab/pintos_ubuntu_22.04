@@ -781,14 +781,17 @@ static bool lazy_load_segment(struct page* page, void* aux)
     /* TODO: Load the segment from the file */
     /* TODO: This called when the first page fault occurs on address VA. */
     /* TODO: VA is available when calling this function. */
-    if (!vm_do_claim_page(page)) {
+
+    if (!vm_claim_page(page->va)) {
+        free(aux);
         return false; // 프레임 할당 및 매핑 실패
-    }
+    } // 수정본
     struct load_aux* temp = (struct load_aux*)aux;
     lock_acquire(&filesys_lock);
     file_seek(temp->file, temp->ofs);
     if (file_read(temp->file, page->frame->kva, temp->read_bytes) != (int)temp->read_bytes) {
         lock_release(&filesys_lock);
+        free(aux);
         return false;
     }
     lock_release(&filesys_lock);
