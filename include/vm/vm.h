@@ -55,6 +55,7 @@ struct page {
     /* Your implementation */
     struct list_elem elem; // 연결리스트로 사용할 elem
     bool writable;
+    struct executable_load_aux elf;
 
     /* Per-type data are binded into the union.
      * Each function automatically detects the current union */

@@ -1,5 +1,4 @@
 #include "userprog/process.h"
-#include "threads/malloc.h"
 #include <debug.h>
 #include <inttypes.h>
 #include <round.h>
@@ -786,14 +785,13 @@ static bool lazy_load_segment(struct page* page, void* aux)
     /* TODO: VA is available when calling this function. */
 
     struct thread* curr = thread_current();
-    struct executable_load_aux* load_aux = (struct executable_load_aux*)aux;
     void* kpage = page->frame->kva;
 
     // struct file* file = load_aux->file;
     struct file* file = curr->execute_file;
-    off_t ofs = load_aux->ofs;
-    size_t page_read_bytes = load_aux->page_read_bytes;
-    size_t page_zero_bytes = load_aux->page_zero_bytes;
+    off_t ofs = page->elf.ofs;
+    size_t page_read_bytes = page->elf.page_read_bytes;
+    size_t page_zero_bytes = page->elf.page_zero_bytes;
 
     file_seek(file, ofs);
 
@@ -833,17 +831,13 @@ static bool load_segment(struct file* file, off_t ofs, uint8_t* upage, uint32_t 
         size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
         size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-        // struct executable_load_aux aux = {
-        //     .ofs = ofs,
-        //     .page_read_bytes = page_read_bytes,
-        //     .page_zero_bytes = page_zero_bytes,
-        // };
-        struct executable_load_aux* aux = malloc(PGSIZE);
-        aux->ofs = ofs;
-        aux->page_read_bytes = page_read_bytes;
-        aux->page_zero_bytes = page_zero_bytes;
+        struct executable_load_aux aux = {
+            .ofs = ofs,
+            .page_read_bytes = page_read_bytes,
+            .page_zero_bytes = page_zero_bytes,
+        };
 
-        if (!vm_alloc_page_with_initializer(VM_ANON, upage, writable, lazy_load_segment, aux))
+        if (!vm_alloc_page_with_initializer(VM_ANON, upage, writable, lazy_load_segment, &aux))
             return false;
 
         /* Advance. */
