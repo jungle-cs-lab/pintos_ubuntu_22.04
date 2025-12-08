@@ -80,6 +80,7 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void* upage, bool writabl
         uninit_new(page, upage, init, type, aux, page_initializer);
 
         // MEMO:: what fields should I modify at the moment that is "after calling the uninit_new" ???
+        page->writable = writable;
 
         /* TODO: Insert the page into the spt. */
         spt_insert_page(spt, page);
