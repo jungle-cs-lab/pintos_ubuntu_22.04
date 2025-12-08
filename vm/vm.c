@@ -48,7 +48,6 @@ static struct frame* vm_evict_frame(void);
 bool vm_alloc_page_with_initializer(enum vm_type type, void* upage, bool writable, vm_initializer* init, void* aux)
 {
 
-    // MEMO: 시작은 UNINIT으로 한다며...?
     ASSERT(VM_TYPE(type) != VM_UNINIT)
 
     struct supplemental_page_table* spt = &thread_current()->spt;
@@ -75,10 +74,9 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void* upage, bool writabl
         }
 
         struct page* page = malloc(PGSIZE);
-        // 2. call uninit_new with it.
+
         uninit_new(page, upage, init, type, aux, page_initializer);
 
-        // MEMO:: what fields should I modify at the moment that is "after calling the uninit_new" ???
         page->writable = writable;
         if (aux) {
             struct seg_meta* aux_ = (struct seg_meta*)aux;
