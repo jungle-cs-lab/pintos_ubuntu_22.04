@@ -59,8 +59,6 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void* upage, bool writabl
             PANIC("page alloc failed.");
             return false;
         }
-        page->va = pg_round_down(upage);
-        page->frame = NULL;
 
         bool (*initializer)(struct page*, enum vm_type, void*);
 
