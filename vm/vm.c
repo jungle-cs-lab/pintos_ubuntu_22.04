@@ -4,7 +4,6 @@
 #include "threads/malloc.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
-#include <stdio.h>
 #include "threads/mmu.h"
 
 struct list frame_list;
@@ -71,7 +70,7 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void* upage, bool writabl
             page_initializer = file_backed_initializer;
             break;
         default:
-            printf("soemthing wrong!");
+            PANIC("Unknown type of page initialized.");
             break;
         }
 
