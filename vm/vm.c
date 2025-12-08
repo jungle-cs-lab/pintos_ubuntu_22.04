@@ -3,6 +3,9 @@
 #include "threads/malloc.h"
 #include "vm/vm.h"
 #include "vm/inspect.h"
+#include "threads/vaddr.h"
+#include "threads/mmu.h"
+#include "userprog/process.h"
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -43,38 +46,69 @@ static struct frame* vm_evict_frame(void);
 bool vm_alloc_page_with_initializer(enum vm_type type, void* upage, bool writable, vm_initializer* init, void* aux)
 {
 
-    ASSERT(VM_TYPE(type) != VM_UNINIT)
+    ASSERT(VM_TYPE(type) != VM_UNINIT);
+    ASSERT(is_user_vaddr(upage));
 
     struct supplemental_page_table* spt = &thread_current()->spt;
 
     /* Check wheter the upage is already occupied or not. */
     if (spt_find_page(spt, upage) == NULL) {
-        /* TODO: Create the page, fetch the initialier according to the VM type,
-         * TODO: and then create "uninit" page struct by calling uninit_new. You
-         * TODO: should modify the field after calling the uninit_new. */
 
-        /* TODO: Insert the page into the spt. */
+        struct page* new_page = (struct page*)malloc(sizeof(struct page));
+        if (new_page == NULL) {
+            PANIC("page alloc failed.");
+            return false;
+        }
+
+        bool (*initializer)(struct page*, enum vm_type, void*);
+
+        switch (VM_TYPE(type)) {
+        case VM_ANON:
+            initializer = anon_initializer;
+            break;
+        case VM_FILE:
+            initializer = file_backed_initializer;
+            break;
+        default:
+            free(new_page);
+            return false;
+        }
+
+        uninit_new(new_page, upage, init, type, aux, initializer);
+        new_page->writable = writable;
+
+        return spt_insert_page(spt, new_page);
     }
-err:
     return false;
 }
 
 /* Find VA from spt and return page. On error, return NULL. */
-struct page* spt_find_page(struct supplemental_page_table* spt UNUSED, void* va UNUSED)
+struct page* spt_find_page(struct supplemental_page_table* spt, void* va)
 {
     struct page* page = NULL;
-    /* TODO: Fill this function. */
+    struct list_elem* elem;
 
-    return page;
+    void* target = pg_round_down(va);
+
+    for (elem = list_begin(&spt->pages); elem != list_end(&spt->pages); elem = list_next(elem)) {
+        page = list_entry(elem, struct page, elem);
+        if (page->va == target)
+            return page; // 리스트 순회 해서 va와 매칭시 리턴.
+    }
+
+    return NULL;
 }
 
 /* Insert PAGE into spt with validation. */
-bool spt_insert_page(struct supplemental_page_table* spt UNUSED, struct page* page UNUSED)
+bool spt_insert_page(struct supplemental_page_table* spt, struct page* page)
 {
-    int succ = false;
-    /* TODO: Fill this function. */
-
-    return succ;
+    ASSERT(page != NULL);
+    ASSERT(page->va != NULL);
+    list_push_back(&spt->pages, &page->elem);
+    if (spt_find_page(spt, page->va) != page) { // insert 잘됐는지 검증
+        return false;
+    }
+    return true;
 }
 
 void spt_remove_page(struct supplemental_page_table* spt, struct page* page)
@@ -108,8 +142,21 @@ static struct frame* vm_evict_frame(void)
  * space.*/
 static struct frame* vm_get_frame(void)
 {
-    struct frame* frame = NULL;
     /* TODO: Fill this function. */
+
+    struct frame* frame = (struct frame*)malloc(sizeof(struct frame));
+    if (frame == NULL) {
+        PANIC("malloc frame failed.");
+    }
+
+    void* upage = palloc_get_page(PAL_USER);
+    if (upage == NULL) {
+        free(frame);
+        PANIC("palloc frame failed.");
+    }
+
+    frame->kva = upage;
+    frame->page = NULL;
 
     ASSERT(frame != NULL);
     ASSERT(frame->page == NULL);
@@ -127,13 +174,24 @@ static bool vm_handle_wp(struct page* page UNUSED)
 }
 
 /* Return true on success */
-bool vm_try_handle_fault(struct intr_frame* f UNUSED, void* addr UNUSED, bool user UNUSED, bool write UNUSED,
-                         bool not_present UNUSED)
+bool vm_try_handle_fault(struct intr_frame* f, void* addr, bool user, bool write, bool not_present)
 {
-    struct supplemental_page_table* spt UNUSED = &thread_current()->spt;
+    struct supplemental_page_table* spt = &thread_current()->spt;
     struct page* page = NULL;
     /* TODO: Validate the fault */
     /* TODO: Your code goes here */
+    if (addr == NULL) {
+        PANIC("addr == NULL");
+    }
+    if (!is_user_vaddr(addr)) {
+        PANIC("not user addr");
+    }
+
+    page = spt_find_page(&thread_current()->spt, addr);
+    if (page == NULL) {
+        PANIC("page null error");
+        return false;
+    }
 
     return vm_do_claim_page(page);
 }
@@ -147,10 +205,22 @@ void vm_dealloc_page(struct page* page)
 }
 
 /* Claim the page that allocate on VA. */
-bool vm_claim_page(void* va UNUSED)
+bool vm_claim_page(void* va)
 {
-    struct page* page = NULL;
     /* TODO: Fill this function */
+    struct thread* t = thread_current();
+    if (!(is_user_vaddr(va))) {
+        return false;
+    }
+
+    struct page* page = spt_find_page(&t->spt, va);
+    if (page == NULL) {
+        return false;
+    }
+
+    if (page->frame != NULL) {
+        return true;
+    }
 
     return vm_do_claim_page(page);
 }
@@ -159,19 +229,27 @@ bool vm_claim_page(void* va UNUSED)
 static bool vm_do_claim_page(struct page* page)
 {
     struct frame* frame = vm_get_frame();
-
+    if (frame == NULL) {
+        return false;
+    }
     /* Set links */
     frame->page = page;
     page->frame = frame;
+    if (!is_user_vaddr(page->va)) {
+        PANIC("vm_do_claim_page: page->va is kernel address!");
+    }
 
     /* TODO: Insert page table entry to map page's VA to frame's PA. */
+    if (!pml4_set_page(thread_current()->pml4, page->va, frame->kva, true))
+        PANIC("pml4_set_page failed");
 
     return swap_in(page, frame->kva);
 }
 
 /* Initialize new supplemental page table */
-void supplemental_page_table_init(struct supplemental_page_table* spt UNUSED)
+void supplemental_page_table_init(struct supplemental_page_table* spt)
 {
+    list_init(&spt->pages);
 }
 
 /* Copy supplemental page table from src to dst */

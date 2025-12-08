@@ -2,6 +2,7 @@
 #define VM_VM_H
 #include <stdbool.h>
 #include "threads/palloc.h"
+#include "list.h"
 
 enum vm_type {
     /* page not initialized */
@@ -36,14 +37,23 @@ struct thread;
 
 #define VM_TYPE(type) ((type) & 7)
 
+struct load_aux {
+    off_t ofs;
+    uint32_t read_bytes;
+    uint32_t zero_bytes;
+};
+
 /* The representation of "page".
  * This is kind of "parent class", which has four "child class"es, which are
  * uninit_page, file_page, anon_page, and page cache (project4).
  * DO NOT REMOVE/MODIFY PREDEFINED MEMBER OF THIS STRUCTURE. */
 struct page {
     const struct page_operations* operations;
-    void* va;            /* Address in terms of user space */
-    struct frame* frame; /* Back reference for frame */
+    void* va;              /* Address in terms of user space */
+    struct frame* frame;   /* Back reference for frame */
+    struct list_elem elem; // 연결리스트로 사용할 elem
+    bool writable;         // page구조체에 상태,타입,...등
+    enum vm_type type;
 
     /* Your implementation */
 
@@ -85,7 +95,9 @@ struct page_operations {
 /* Representation of current process's memory space.
  * We don't want to force you to obey any specific design for this struct.
  * All designs up to you for this. */
-struct supplemental_page_table {};
+struct supplemental_page_table {
+    struct list pages; // page 연결리스트
+};
 
 #include "threads/thread.h"
 void supplemental_page_table_init(struct supplemental_page_table* spt);
@@ -103,5 +115,6 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void* upage, bool writabl
 void vm_dealloc_page(struct page* page);
 bool vm_claim_page(void* va);
 enum vm_type page_get_type(struct page* page);
+static bool uninit_initialize(struct page* page, void* kva);
 
 #endif /* VM_VM_H */
