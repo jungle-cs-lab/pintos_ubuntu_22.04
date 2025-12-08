@@ -35,7 +35,7 @@ enum vm_type {
 struct page_operations;
 struct thread;
 
-struct executable_load_aux {
+struct seg_meta {
     off_t ofs;
     size_t page_read_bytes;
     size_t page_zero_bytes;
@@ -55,7 +55,7 @@ struct page {
     /* Your implementation */
     struct list_elem elem; // 연결리스트로 사용할 elem
     bool writable;
-    struct executable_load_aux elf;
+    struct seg_meta elf;
 
     /* Per-type data are binded into the union.
      * Each function automatically detects the current union */

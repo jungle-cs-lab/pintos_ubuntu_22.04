@@ -831,7 +831,7 @@ static bool load_segment(struct file* file, off_t ofs, uint8_t* upage, uint32_t 
         size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
         size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-        struct executable_load_aux aux = {
+        struct seg_meta aux = {
             .ofs = ofs,
             .page_read_bytes = page_read_bytes,
             .page_zero_bytes = page_zero_bytes,

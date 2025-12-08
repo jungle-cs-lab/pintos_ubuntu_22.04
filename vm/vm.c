@@ -82,7 +82,7 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void* upage, bool writabl
         // MEMO:: what fields should I modify at the moment that is "after calling the uninit_new" ???
         page->writable = writable;
         if (aux) {
-            struct executable_load_aux* aux_ = (struct executable_load_aux*)aux;
+            struct seg_meta* aux_ = (struct seg_meta*)aux;
             page->elf.ofs = aux_->ofs;
             page->elf.page_read_bytes = aux_->page_read_bytes;
             page->elf.page_zero_bytes = aux_->page_zero_bytes;
