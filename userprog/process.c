@@ -793,10 +793,7 @@ static bool lazy_load_segment(struct page* page, void* aux)
     }
     lock_release(&filesys_lock);
     memset(page->frame->kva + temp->read_bytes, 0, temp->zero_bytes);
-    free(aux);
-    // if (vm_claim_page(page) == false) {
-    //     return false;
-    // }
+    free(aux); // aux 다씀.
 
     return true;
 }
