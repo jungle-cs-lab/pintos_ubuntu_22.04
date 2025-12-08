@@ -1,4 +1,5 @@
 #include "userprog/process.h"
+#include "threads/malloc.h"
 #include <debug.h>
 #include <inttypes.h>
 #include <round.h>
@@ -832,13 +833,17 @@ static bool load_segment(struct file* file, off_t ofs, uint8_t* upage, uint32_t 
         size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
         size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-        struct executable_load_aux aux = {
-            .ofs = ofs,
-            .page_read_bytes = page_read_bytes,
-            .page_zero_bytes = page_zero_bytes,
-        };
+        // struct executable_load_aux aux = {
+        //     .ofs = ofs,
+        //     .page_read_bytes = page_read_bytes,
+        //     .page_zero_bytes = page_zero_bytes,
+        // };
+        struct executable_load_aux* aux = malloc(PGSIZE);
+        aux->ofs = ofs;
+        aux->page_read_bytes = page_read_bytes;
+        aux->page_zero_bytes = page_zero_bytes;
 
-        if (!vm_alloc_page_with_initializer(VM_ANON, upage, writable, lazy_load_segment, &aux))
+        if (!vm_alloc_page_with_initializer(VM_ANON, upage, writable, lazy_load_segment, aux))
             return false;
 
         /* Advance. */
