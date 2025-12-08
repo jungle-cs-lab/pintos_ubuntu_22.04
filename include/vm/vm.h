@@ -38,7 +38,6 @@ struct thread;
 #define VM_TYPE(type) ((type) & 7)
 
 struct load_aux {
-    struct file* file;
     off_t ofs;
     uint32_t read_bytes;
     uint32_t zero_bytes;
@@ -57,7 +56,6 @@ struct page {
     enum vm_type type;
 
     /* Your implementation */
-    // bool (*initializer)(struct page*, enum vm_type, void*);
 
     /* Per-type data are binded into the union.
      * Each function automatically detects the current union */
@@ -99,7 +97,6 @@ struct page_operations {
  * All designs up to you for this. */
 struct supplemental_page_table {
     struct list pages; // page 연결리스트
-    // struct lock list_lock;
 };
 
 #include "threads/thread.h"

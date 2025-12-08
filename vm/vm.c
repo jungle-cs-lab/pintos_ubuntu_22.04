@@ -5,6 +5,7 @@
 #include "vm/inspect.h"
 #include "threads/vaddr.h"
 #include "threads/mmu.h"
+#include "userprog/process.h"
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -45,7 +46,7 @@ static struct frame* vm_evict_frame(void);
 bool vm_alloc_page_with_initializer(enum vm_type type, void* upage, bool writable, vm_initializer* init, void* aux)
 {
 
-    ASSERT(VM_TYPE(type) != VM_UNINIT)
+    ASSERT(VM_TYPE(type) != VM_UNINIT);
     ASSERT(is_user_vaddr(upage));
 
     struct supplemental_page_table* spt = &thread_current()->spt;
@@ -80,18 +81,6 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void* upage, bool writabl
     }
     return false;
 }
-
-/*  // 혹시 쓸수도 있으니 ..?
-    if (spt_insert_page(spt, new_page) == false) {
-        goto err;
-    }
-
-    return true;
-}
-goto err;
-err:
-return false;
-}*/
 
 /* Find VA from spt and return page. On error, return NULL. */
 struct page* spt_find_page(struct supplemental_page_table* spt, void* va)

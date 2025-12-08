@@ -788,8 +788,8 @@ static bool lazy_load_segment(struct page* page, void* aux)
     } // 수정본
     struct load_aux* temp = (struct load_aux*)aux;
     lock_acquire(&filesys_lock);
-    file_seek(temp->file, temp->ofs);
-    if (file_read(temp->file, page->frame->kva, temp->read_bytes) != (int)temp->read_bytes) {
+    file_seek(thread_current()->execute_file, temp->ofs);
+    if (file_read(thread_current()->execute_file, page->frame->kva, temp->read_bytes) != (int)temp->read_bytes) {
         lock_release(&filesys_lock);
         free(aux);
         return false;
@@ -832,7 +832,6 @@ static bool load_segment(struct file* file, off_t ofs, uint8_t* upage, uint32_t 
         /* TODO: Set up aux to pass information to the lazy_load_segment. */
 
         struct load_aux* aux = (struct load_aux*)malloc(sizeof(struct load_aux));
-        aux->file = file;
         aux->ofs = ofs;
         aux->read_bytes = page_read_bytes;
         aux->zero_bytes = page_zero_bytes;
@@ -861,7 +860,7 @@ static bool setup_stack(struct intr_frame* if_)
      * TODO: You should mark the page is stack. */
     /* TODO: Your code goes here */
 
-    success = vm_alloc_page_with_initializer(VM_ANON, stack_bottom, true, NULL, NULL);
+    success = vm_alloc_page(VM_ANON, stack_bottom, true);
     if (success == false) {
         return false;
     }
