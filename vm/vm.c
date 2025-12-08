@@ -105,7 +105,6 @@ struct page* spt_find_page(struct supplemental_page_table* spt, void* va)
     struct page* page = NULL;
     struct list_elem* page_elem;
 
-    printf("finding page in spt, accessing: %p\n", va);
     for (page_elem = list_begin(&spt->pages); page_elem != list_end(&spt->pages); page_elem = list_next(page_elem)) {
         page = list_entry(page_elem, struct page, elem);
 
@@ -113,7 +112,6 @@ struct page* spt_find_page(struct supplemental_page_table* spt, void* va)
             return page;
     }
 
-    printf("page not found from spt, list iter end, returning NULL\n");
     return NULL;
 }
 
@@ -122,10 +120,7 @@ bool spt_insert_page(struct supplemental_page_table* spt, struct page* page)
 {
     int succ = false;
 
-    printf("inserting: %p\n", page->va);
     list_push_back(&spt->pages, &page->elem);
-    size_t sz = list_size(&spt->pages);
-    printf("after inserting: curr list size: %zu\n", sz);
 
     // validataion
     // (if validated)
@@ -199,8 +194,6 @@ bool vm_try_handle_fault(struct intr_frame* f UNUSED, void* addr UNUSED, bool us
     /* TODO: Validate the fault */
     /* TODO: Your code goes here */
 
-    // spt에서 accessing va에 맞는 page를 찾아서 전달해준다.
-    printf("\tPAGE FAULT! (accessing: %p)\n", addr);
     page = spt_find_page(spt, addr);
 
     return vm_do_claim_page(page);
@@ -222,7 +215,6 @@ bool vm_claim_page(void* va UNUSED)
 
     // gitbook: You will first need to get a page and then calls vm_do_claim_page with the page.
     struct supplemental_page_table* spt UNUSED = &thread_current()->spt;
-    printf("\tspt_find_page: from vm_claim_page\n");
     page = spt_find_page(spt, va);
 
     return vm_do_claim_page(page);
