@@ -6,6 +6,15 @@
 #include "threads/vaddr.h"
 #include "threads/mmu.h"
 #include "userprog/process.h"
+#include <bitmap.h>
+#include "threads/vaddr.h"
+#include "threads/mmu.h"
+
+static struct frame* frames;
+static struct bitmap* frame_table;
+static struct lock frame_lock;
+static void init_frame_table();
+void cleanup_frame_table();
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
  * intialize codes. */
@@ -18,7 +27,26 @@ void vm_init(void)
 #endif
     register_inspect_intr();
     /* DO NOT MODIFY UPPER LINES. */
-    /* TODO: Your code goes here. */
+
+    init_frame_table();
+}
+
+static void init_frame_table()
+{
+    size_t frame_count = user_pool_pages();
+    frame_table = bitmap_create(frame_count);
+    frames = malloc(sizeof *frames * frame_count);
+    for (size_t i = 0; i < frame_count; i++) {
+        frames[i].kva = NULL;
+        frames[i].page = NULL;
+    }
+    lock_init(&frame_lock);
+}
+
+void cleanup_frame_table()
+{
+    free(frames);
+    bitmap_destroy(frame_table);
 }
 
 /* Get the type of the page. This function is useful if you want to know the
@@ -142,11 +170,16 @@ static struct frame* vm_evict_frame(void)
  * space.*/
 static struct frame* vm_get_frame(void)
 {
-    /* TODO: Fill this function. */
+    struct frame* frame;
 
-    struct frame* frame = (struct frame*)malloc(sizeof(struct frame));
-    if (frame == NULL) {
-        PANIC("malloc frame failed.");
+    lock_acquire(&frame_lock);
+
+    size_t free_frame_index = bitmap_scan_and_flip(frame_table, 0, 1, false); /* 가용 프레임 체크 */
+    if (free_frame_index >= 0 && free_frame_index < user_pool_pages()) {
+        frame = &frames[free_frame_index];
+    } else {
+        // 없으면, evict 진행후 프레임 바인딩
+        PANIC("no available frame");
     }
 
     void* upage = palloc_get_page(PAL_USER);
@@ -156,7 +189,7 @@ static struct frame* vm_get_frame(void)
     }
 
     frame->kva = upage;
-    frame->page = NULL;
+    lock_release(&frame_lock);
 
     ASSERT(frame != NULL);
     ASSERT(frame->page == NULL);
@@ -178,8 +211,7 @@ bool vm_try_handle_fault(struct intr_frame* f, void* addr, bool user, bool write
 {
     struct supplemental_page_table* spt = &thread_current()->spt;
     struct page* page = NULL;
-    /* TODO: Validate the fault */
-    /* TODO: Your code goes here */
+
     if (addr == NULL) {
         PANIC("addr == NULL");
     }
@@ -207,7 +239,6 @@ void vm_dealloc_page(struct page* page)
 /* Claim the page that allocate on VA. */
 bool vm_claim_page(void* va)
 {
-    /* TODO: Fill this function */
     struct thread* t = thread_current();
     if (!(is_user_vaddr(va))) {
         return false;
@@ -239,7 +270,7 @@ static bool vm_do_claim_page(struct page* page)
         PANIC("vm_do_claim_page: page->va is kernel address!");
     }
 
-    /* TODO: Insert page table entry to map page's VA to frame's PA. */
+    /* Insert page table entry to map page's VA to frame's PA. */
     if (!pml4_set_page(thread_current()->pml4, page->va, frame->kva, true))
         PANIC("pml4_set_page failed");
 

@@ -354,3 +354,8 @@ static bool page_from_pool(const struct pool* pool, void* page)
     size_t end_page = start_page + bitmap_size(pool->used_map);
     return page_no >= start_page && page_no < end_page;
 }
+
+size_t user_pool_pages(void)
+{
+    return bitmap_size(user_pool.used_map);
+}
