@@ -117,4 +117,6 @@ bool vm_claim_page(void* va);
 enum vm_type page_get_type(struct page* page);
 static bool uninit_initialize(struct page* page, void* kva);
 
+void cleanup_frame_table();
+
 #endif /* VM_VM_H */

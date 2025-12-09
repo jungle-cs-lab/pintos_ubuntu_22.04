@@ -335,6 +335,7 @@ void power_off(void)
 #ifdef FILESYS
     filesys_done();
 #endif
+    cleanup_frame_table();
 
     print_stats();
 
