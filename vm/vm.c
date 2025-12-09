@@ -136,6 +136,7 @@ bool spt_insert_page(struct supplemental_page_table* spt, struct page* page)
     ASSERT(page != NULL);
     ASSERT(page->va != NULL);
     hash_insert(&spt->pages, &page->elem);
+    ASSERT(hash_find(&spt->pages, &page->elem) == &page->elem)
     // TODO:: `hash_insert` 함수는 동일한 element가 이미 존재하면 기존 element를 리턴한다.
     // 이 경우에 대한 예외처리가 필요하다.
 
