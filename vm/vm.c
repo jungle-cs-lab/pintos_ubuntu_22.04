@@ -67,6 +67,8 @@ enum vm_type page_get_type(struct page* page)
 static struct frame* vm_get_victim(void);
 static bool vm_do_claim_page(struct page* page);
 static struct frame* vm_evict_frame(void);
+static uint64_t spt_hash(const struct hash_elem* e, void* aux);
+static bool spt_hash_less(const struct hash_elem* a, const struct hash_elem* b, void* aux);
 
 /* Create the pending page object with initializer. If you want to create a
  * page, do not create it directly and make it through this function or
@@ -114,14 +116,15 @@ bool vm_alloc_page_with_initializer(enum vm_type type, void* upage, bool writabl
 struct page* spt_find_page(struct supplemental_page_table* spt, void* va)
 {
     struct page* page = NULL;
-    struct list_elem* elem;
-
     void* target = pg_round_down(va);
+    struct hash_iterator i;
 
-    for (elem = list_begin(&spt->pages); elem != list_end(&spt->pages); elem = list_next(elem)) {
-        page = list_entry(elem, struct page, elem);
+    // REF: lib/kernel/hash.c, 166:175
+    hash_first(&i, &spt->pages);
+    while (hash_next(&i)) {
+        page = hash_entry(hash_cur(&i), struct page, elem);
         if (page->va == target)
-            return page; // 리스트 순회 해서 va와 매칭시 리턴.
+            return page;
     }
 
     return NULL;
@@ -132,10 +135,8 @@ bool spt_insert_page(struct supplemental_page_table* spt, struct page* page)
 {
     ASSERT(page != NULL);
     ASSERT(page->va != NULL);
-    list_push_back(&spt->pages, &page->elem);
-    if (spt_find_page(spt, page->va) != page) { // insert 잘됐는지 검증
-        return false;
-    }
+    hash_insert(&spt->pages, &page->elem);
+
     return true;
 }
 
@@ -280,7 +281,7 @@ static bool vm_do_claim_page(struct page* page)
 /* Initialize new supplemental page table */
 void supplemental_page_table_init(struct supplemental_page_table* spt)
 {
-    list_init(&spt->pages);
+    hash_init(&spt->pages, spt_hash, spt_hash_less, NULL);
 }
 
 /* Copy supplemental page table from src to dst */
@@ -294,4 +295,21 @@ void supplemental_page_table_kill(struct supplemental_page_table* spt UNUSED)
 {
     /* TODO: Destroy all the supplemental_page_table hold by thread and
      * TODO: writeback all the modified contents to the storage. */
+}
+
+/* 구조체의 멤버를 이용해서 같은 버킷에 저장하도록 하는 장치 */
+static uint64_t spt_hash(const struct hash_elem* e, void* aux)
+{
+    const struct page* page = hash_entry(e, struct page, elem);
+
+    return hash_bytes(&page->va, sizeof page->va);
+}
+
+/* 해시 값이 충돌했을 때, 버킷 내에서 같은 키인지 다른 키인지 가려주는 장치 */
+static bool spt_hash_less(const struct hash_elem* a, const struct hash_elem* b, void* aux)
+{
+    const struct page* page_a = hash_entry(a, struct page, elem);
+    const struct page* page_b = hash_entry(b, struct page, elem);
+
+    return &page_a->va < &page_b->va;
 }
