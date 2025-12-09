@@ -359,8 +359,3 @@ size_t user_pool_pages(void)
 {
     return bitmap_size(user_pool.used_map);
 }
-
-void* user_pool_base(void)
-{
-    return user_pool.base;
-}

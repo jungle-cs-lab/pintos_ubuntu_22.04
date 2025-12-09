@@ -23,4 +23,3 @@ void palloc_free_multiple(void*, size_t page_cnt);
 #endif /* threads/palloc.h */
 
 size_t user_pool_pages(void);
-void* user_pool_base(void);
