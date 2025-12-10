@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include "threads/palloc.h"
 #include "list.h"
+#include <hash.h>
 
 enum vm_type {
     /* page not initialized */
@@ -51,7 +52,7 @@ struct page {
     const struct page_operations* operations;
     void* va;              /* Address in terms of user space */
     struct frame* frame;   /* Back reference for frame */
-    struct list_elem elem; // 연결리스트로 사용할 elem
+    struct hash_elem elem; // SPT entry
     bool writable;         // page구조체에 상태,타입,...등
     enum vm_type type;
 
@@ -96,7 +97,7 @@ struct page_operations {
  * We don't want to force you to obey any specific design for this struct.
  * All designs up to you for this. */
 struct supplemental_page_table {
-    struct list pages; // page 연결리스트
+    struct hash pages;
 };
 
 #include "threads/thread.h"
